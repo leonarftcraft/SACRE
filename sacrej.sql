@@ -91,7 +91,7 @@ CREATE TABLE `individuos` (
   `FecNacInd` date NOT NULL,
   `SexInd` text NOT NULL,
   `FilInd` text NOT NULL COMMENT 'Filiacion del individuo',
-  `DirInd` text NOT NULL,
+  `DirInd` text DEFAULT NULL,
   `IdUsu` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -229,7 +229,10 @@ CREATE TABLE `preguntas_seguridad` (
 --
 
 INSERT INTO `preguntas_seguridad` (`IdUsu`, `PreSeg1`, `ResSeg1`, `PreSeg2`, `ResSeg2`, `PreSeg3`, `ResSeg3`, `PreSeg4`, `ResSeg4`) VALUES
-(12345678, '¿Cuál es el nombre de tu primera mascota?', '1', '¿En qué ciudad naciste?', '2', '¿Cuál es tu comida favorita?', '3', '¿Cómo se llama tu mejor amigo de la infancia?', '4');
+(1, '¿Cuál es el nombre de tu primera mascota?', 'mascota', '¿En qué ciudad naciste?', 'ciudad', '¿Cuál es tu comida favorita?', 'comida', '¿Cómo se llama tu mejor amigo de la infancia?', 'amigo'),
+(2, '¿Cuál es el nombre de tu primera mascota?', 'mascota', '¿En qué ciudad naciste?', 'ciudad', '¿Cuál es tu comida favorita?', 'comida', '¿Cómo se llama tu mejor amigo de la infancia?', 'amigo'),
+(3, '¿Cuál es el nombre de tu primera mascota?', 'mascota', '¿En qué ciudad naciste?', 'ciudad', '¿Cuál es tu comida favorita?', 'comida', '¿Cómo se llama tu mejor amigo de la infancia?', 'amigo'),
+(4, '¿Cuál es el nombre de tu primera mascota?', 'mascota', '¿En qué ciudad naciste?', 'ciudad', '¿Cuál es tu comida favorita?', 'comida', '¿Cómo se llama tu mejor amigo de la infancia?', 'amigo');
 
 -- --------------------------------------------------------
 
@@ -289,9 +292,16 @@ CREATE TABLE `usuarios` (
 --
 -- Volcado de datos para la tabla `usuarios`
 --
+-- NOTA: El hash de la contraseña de abajo corresponde a 'Admin1234.'.
+-- Ejecute el script 'tools/generar_hash.php' en su servidor
+-- y reemplace el valor de 'ClaUsu' con el resultado.
+--
 
 INSERT INTO `usuarios` (`IdUsu`, `NomUsu`, `ApeUsu`, `Usuario`, `ClaUsu`, `RolUsu`) VALUES
-(12345678, 'Administrador', 'Principal', 'Admin01', '$2y$10$M4/S5hOxGbGExmNj06XmH.jEV..2g5cgJTx4EnOqjtyyj0.M0Kv8S', '10');
+(1, 'Administrador', 'Principal', 'Admin01', '$2y$10$FjDphbSHUuuFvHJoB3hQJu1rgmCUiPoFEHbfajQ4hPPK/M5xasdzC', '10'),
+(2, 'Administrador', 'Principal', 'Admin02', '$2y$10$FjDphbSHUuuFvHJoB3hQJu1rgmCUiPoFEHbfajQ4hPPK/M5xasdzC', '10'),
+(3, 'Administrador', 'Principal', 'Admin03', '$2y$10$FjDphbSHUuuFvHJoB3hQJu1rgmCUiPoFEHbfajQ4hPPK/M5xasdzC', '10'),
+(4, 'Administrador', 'Principal', 'Admin04', '$2y$10$FjDphbSHUuuFvHJoB3hQJu1rgmCUiPoFEHbfajQ4hPPK/M5xasdzC', '10');
 
 --
 -- Índices para tablas volcadas
@@ -493,6 +503,8 @@ ALTER TABLE `inscripcion`
 --
 ALTER TABLE `lugar_bauztizo`
   ADD CONSTRAINT `lugar_bauztizo_ibfk_1` FOREIGN KEY (`IdInd`) REFERENCES `individuo_celebracion` (`IdInd`);
+
+-- ESTE FILTRO QUE GENERABA CONFLICTO POSIBLE SOLUCION ADD CONSTRAINT `lugar_bauztizo_ibfk_1` FOREIGN KEY (`IdInd`) REFERENCES `individuos` (`idInd`);
 
 --
 -- Filtros para la tabla `lugar_catequesis`

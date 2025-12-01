@@ -199,7 +199,7 @@
     whenReady(() => {
       console.log("✅ jQuery detectado, activando scripts...");
 
-      const endpoint = "http://localhost/sacrej/index.php?controller=sacrej&action=agregar_bautizo";
+      const endpoint = "index.php?controller=sacrej&action=agregar_bautizo";
 
       // 🔔 Notificación genérica
       function notify(type, title, text) {
@@ -273,8 +273,8 @@
       });
 
       // Campos que deben permitir números y caracteres especiales:
-      // LugNacInd, Lugar, NotMar
-      ["#LugNacInd", "#Lugar", "#NotMar"].forEach(sel => {
+      // LugNacInd, Lugar
+      ["#LugNacInd", "#Lugar"].forEach(sel => {
         // No filtramos al escribir (permitir todo), sólo normalizamos espacios
         $(sel).on("input", function () {
           // opcional: reducir múltiples espacios en tiempo real

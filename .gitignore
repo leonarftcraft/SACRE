@@ -1,0 +1,5 @@
+# Archivos de proyecto de Visual Studio Code
+.vscode/
+
+# Archivos de configuración de Dansware
+/*.txt

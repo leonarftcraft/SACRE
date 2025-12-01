@@ -114,7 +114,7 @@
   }
 
   // 🧭 Ruta del endpoint
-  const endpoint = "http://localhost/sacrej/index.php?controller=sacrej&action=agregar_ministro";
+  const endpoint = "index.php?controller=sacrej&action=agregar_ministro";
 
   // 🔧 Notificaciones
   function notify(type, title, text) {

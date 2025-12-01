@@ -9,11 +9,34 @@ class sacrejmodel
 
     public function __CONSTRUCT()
     {
-        $this->conexion = new mysqli($this->servidor, $this->usuario, $this->clave, $this->bd);
-        $this->conexion->set_charset("utf8");
+        // Configurar mysqli para que lance excepciones en caso de error
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
-        if ($this->conexion->connect_errno) {
-            die("Error de conexión: " . $this->conexion->connect_error);
+        try {
+            // 1. Intentar conexión a la base de datos principal
+            $this->conexion = new mysqli($this->servidor, $this->usuario, $this->clave, $this->bd);
+            $this->conexion->set_charset("utf8");
+        } catch (mysqli_sql_exception $e) {
+            // 2. Comprobar si el error es 'Unknown database' (código 1049)
+            if ($e->getCode() === 1049) {
+                // 2.1. Intentar instalar la base de datos
+                if ($this->instalar_bd()) {
+                    // 2.2. Si la instalación tuvo éxito, volver a intentar la conexión
+                    try {
+                        $this->conexion = new mysqli($this->servidor, $this->usuario, $this->clave, $this->bd);
+                        $this->conexion->set_charset("utf8");
+                    } catch (mysqli_sql_exception $e2) {
+                        // Si la conexión falla incluso después de la instalación, es un error crítico
+                        die("Error Crítico: No se pudo conectar a la base de datos después de la instalación: ". $e2->getMessage());
+                    }
+                } else {
+                    // Si la instalación falla, es un error crítico
+                    die("Error Crítico: No se pudo instalar la base de datos.");
+                }
+            } else {
+                // 3. Si es cualquier otro error de conexión, mostrarlo
+                die("Error de Conexión a la Base de Datos: ". $e->getMessage());
+            }
         }
     }
 
@@ -727,7 +750,57 @@ class sacrejmodel
         return $this->conexion->query($sql);
     }
 
+    /**
+     * 🛠️ Método de Instalación Automática de la Base de Datos
+     * Se ejecuta si la base de datos principal no existe.
+     */
+    private function instalar_bd()
+    {
+        // 1. Conexión al servidor MySQL (sin base de datos)
+        $conn = new mysqli($this->servidor, $this->usuario, $this->clave);
+        if ($conn->connect_error) {
+            return false; // No se pudo conectar al servidor
+        }
 
+        // 2. Crear la base de datos
+        $sql_crear_bd = "CREATE DATABASE IF NOT EXISTS `". $this->bd. "` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;";
+        if (!$conn->query($sql_crear_bd)) {
+            $conn->close();
+            return false; // Error al crear la BD
+        }
+        $conn->select_db($this->bd); // Seleccionar la nueva BD
 
+        // 3. Leer y limpiar el contenido del archivo .sql
+        $sql_file = 'sacrej.sql';
+        if (!file_exists($sql_file)) {
+            $conn->close();
+            return false; // Archivo SQL no encontrado
+        }
+        $sql_script = file_get_contents($sql_file);
+        if ($sql_script === false) {
+            $conn->close();
+            return false; // No se pudo leer el archivo SQL
+        }
+
+        // Eliminar comentarios de una sola línea (--) y líneas vacías
+        $sql_script = preg_replace('/^-- .*$/m', '', $sql_script);
+        $sql_script = trim($sql_script);
+
+        // 4. Ejecutar el script SQL
+        if ($sql_script) {
+            if (!$conn->multi_query($sql_script)) {
+                $conn->close();
+                return false; // Error al ejecutar el script
+            }
+            // Limpiar resultados de multi_query para permitir la siguiente consulta
+            while ($conn->next_result()) {
+                if (!$conn->more_results()) break;
+            }
+        }
+
+        // 5. Cerrar conexión de instalación y retornar éxito
+        $conn->close();
+        return true;
+    }
 }
 ?>

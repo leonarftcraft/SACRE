@@ -1,4 +1,5 @@
 <?php
+
 /**
  * ---------------------------------------------------------
  * 🚀 INDEX PRINCIPAL MVC - SACREJ (Versión Final Corregida)

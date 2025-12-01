@@ -82,7 +82,7 @@
     else setTimeout(() => whenReady(fn), 200);
   }
 
-  const endpoint = "http://localhost/sacrej/index.php?controller=sacrej&action=agregar_celebracion";
+  const endpoint = "index.php?controller=sacrej&action=agregar_celebracion";
 
   function notify(type, title, text) {
     if (window.Swal && Swal.fire) {
