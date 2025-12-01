@@ -1,0 +1,4 @@
+Entró al modelo:
+NomJer: Administrador Parroquial
+DesJer: sacerdote designado por el obispo para gestionar los asuntos de una parroquia de forma temporal
+Inserción correcta, ID generado: 3

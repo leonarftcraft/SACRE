@@ -1,0 +1,12 @@
+Datos recibidos:
+Array
+(
+    [NomJer] => Administrador Parroquial
+    [DesJer] => sacerdote designado por el obispo para gestionar los asuntos de una parroquia de forma temporal
+)
+Resultado del modelo:
+Array
+(
+    [status] => ok
+    [msg] => Jerarquía registrada con éxito.
+)

@@ -1,0 +1,210 @@
+/* =================== CONFIGURACIÓN GENERAL =================== */
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    /* sin display:flex global */
+}
+
+/* ===== Layout solo para vistas internas (layout.php) ===== */
+body.layout-interno {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* main de vistas internas (ej. ministros, usuarios, etc.) */
+body.layout-interno main {
+    flex: 1;
+    margin-top: 70px;
+    margin-bottom: 40px;
+    padding-top: 90px;
+}
+
+
+/* footer interno pegado abajo */
+body.layout-interno footer {
+    margin-top: auto;
+}
+
+/* ===== Layout para páginas externas de formularios
+   (registro.php, iniciar_sesion.php, recuperar_clave.php)
+   que usan: body class="d-flex flex-column min-vh-100" ===== */
+
+/* El contenedor justo después del nav ocupa el espacio
+   disponible y separa el card del footer */
+body.d-flex.flex-column.min-vh-100 > nav + .container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    margin-top: 40px;
+    margin-bottom: 40px;
+}
+
+/* La fila interna ocupa todo el ancho del contenedor flex */
+body.d-flex.flex-column.min-vh-100 > nav + .container > .row {
+    width: 100%;
+}
+
+/* Footer pegado al fondo en las páginas externas */
+body.d-flex.flex-column.min-vh-100 > footer {
+    margin-top: auto;
+}
+
+/* ================= NAVBAR PERSONALIZADO ================== */
+.navbar-custom {
+    background-color: #0db9e4;
+    padding: 0.8rem 1.5rem;
+}
+
+.navbar-custom .navbar-brand {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #fff !important;
+}
+
+.navbar-custom .nav-link {
+    color: #fff !important;
+    font-weight: 500;
+    margin-right: 15px;
+}
+
+.navbar-custom .nav-link:hover,
+.navbar-custom .nav-link.active {
+    color: #212529 !important;
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 5px;
+    padding: 6px 10px;
+}
+
+/* Dropdown menú */
+.navbar-custom .dropdown-menu {
+    background-color: #0db9e4;
+    border: none;
+    border-radius: 8px;
+    min-width: 180px;
+}
+
+/* Dropdown item */
+.navbar-custom .dropdown-item {
+    color: #fff !important;
+}
+
+.navbar-custom .dropdown-item:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Quitar sombra y borde del toggler */
+.navbar-toggler {
+    border: none;
+}
+
+.navbar-toggler:focus {
+    box-shadow: none;
+}
+
+/* =================== PANEL DE BIENVENIDA =================== */
+#welcome-panel {
+    margin-top: 80px;
+    text-align: center;
+}
+
+#welcome-panel h1 {
+    font-weight: bold;
+    color: #0db9e4;
+}
+
+#welcome-panel p {
+    font-size: 1.2rem;
+    color: #555;
+}
+
+/* =================== CARRUSEL DE FRASES =================== */
+#frasesCarousel {
+    margin-top: 50px;
+}
+
+#frasesCarousel .carousel-inner {
+    border-radius: 15px;
+    background: #f8f9fa;
+    padding: 20px;
+}
+
+#frasesCarousel .carousel-item p {
+    font-size: 1.2rem;
+    font-style: italic;
+    color: #333;
+}
+
+#frasesCarousel .carousel-indicators button {
+    background-color: #0db9e4;
+}
+
+/* =================== OTROS ELEMENTOS =================== */
+.card {
+    border: none;
+    border-radius: 15px;
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.btn-primary {
+    background-color: #0db9e4;
+    border-color: #0db9e4;
+    padding: 0.5rem 1.5rem;
+    border-radius: 8px;
+}
+
+/* ===== Carrusel del Inicio ===== */
+#inicioCarousel {
+    max-width: 600px;      /* Tamaño cuadrado moderado */
+    margin: 0 auto;        /* Centrado */
+}
+
+#inicioCarousel .carousel-inner img {
+    width: 100%;
+    height: 600px;         /* Imágenes casi cuadradas */
+    object-fit: cover;     /* Recorta sin deformar */
+    border-radius: 20px;   /* Bordes suaves */
+}
+
+#welcome-title {
+    text-align: center;
+    margin-top: 40px;
+    font-size: 2rem;
+    font-weight: bold;
+    color: #0db9e4;
+}
+
+#welcome-subtitle {
+    text-align: center;
+    font-size: 1.2rem;
+    color: #555;
+    margin-bottom: 20px;
+}
+
+/* Encabezados de tarjetas (registro, login, recuperar clave) */
+.card-header {
+    background-color: #0db9e4 !important;
+    color: #fff !important;
+    font-weight: bold;
+    border-radius: 10px 10px 0 0;
+}
+
+/* Quitar flechas de los inputs numéricos */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    appearance: textfield;
+    -moz-appearance: textfield; /* fallback opcional */
+}
+
+
