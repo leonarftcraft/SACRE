@@ -76,10 +76,495 @@ class SacrejController
         require_once "view/layout.php";
     }
 
+    public function vista_administrar_api()
+    {
+        $apiKeys = $this->_leer_api_keys();
+        $contenido = "view/administrar_api.php";
+        require_once "view/layout.php";
+    }
+
     public function vista_celebraciones()
     {
         $contenido = "view/celebraciones.php";
         require_once "view/layout.php";
+    }
+
+    public function vista_desplegar_server()
+    {
+        // Obtener estado actual del server (simulado en archivo o sesión)
+        $archivo_estado = 'server_status.txt';
+        $estado_server = file_exists($archivo_estado) ? file_get_contents($archivo_estado) : '0';
+        
+        // Obtener datos para las tablas
+        $listaBautizados = $this->model->obtener_reporte_bautizados();
+        
+        // 🔹 Obtener IP y generar URL para móviles
+        $ip_server = getHostByName(getHostName());
+        $ruta_proyecto = dirname($_SERVER['SCRIPT_NAME']);
+        $ruta_proyecto = str_replace('\\', '/', $ruta_proyecto); // Normalizar slashes en Windows
+        $ruta_proyecto = rtrim($ruta_proyecto, '/'); // Quitar slash final si existe
+        
+        $url_movil = "http://{$ip_server}{$ruta_proyecto}/?controller=sacrej&action=vista_cliente_movil";
+
+        $contenido = "view/desplegar_server.php";
+        require_once "view/layout.php";
+    }
+
+    /* ============================================================
+       🔑 GESTIÓN DE API KEYS (ARCHIVO ENCRIPTADO)
+       ============================================================ */
+
+    private function _get_api_file_path() {
+        return 'api_keys.enc';
+    }
+    
+    private function _get_enc_key() {
+        // En producción, esto debería estar en una variable de entorno
+        return 'CLAVE_SECRETA_SACREJ_2025_SEGURA'; 
+    }
+
+    private function _leer_api_keys() {
+        $file = $this->_get_api_file_path();
+        if (!file_exists($file)) return [];
+        
+        $content = file_get_contents($file);
+        if (empty($content)) return [];
+
+        // Formato esperado: IV::DatosEncriptados
+        $parts = explode('::', $content);
+        if (count($parts) !== 2) return [];
+        
+        $iv = base64_decode($parts[0]);
+        $encrypted = base64_decode($parts[1]);
+        $key = $this->_get_enc_key();
+        
+        $json = openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
+        return json_decode($json, true) ?? [];
+    }
+
+    private function _guardar_api_keys_file($data) {
+        $key = $this->_get_enc_key();
+        $json = json_encode($data);
+        $iv = openssl_random_pseudo_bytes(openssl_cipher_iv_length('AES-256-CBC'));
+        $encrypted = openssl_encrypt($json, 'AES-256-CBC', $key, 0, $iv);
+        
+        $content = base64_encode($iv) . '::' . base64_encode($encrypted);
+        file_put_contents($this->_get_api_file_path(), $content);
+    }
+
+    public function guardar_api_key() {
+        header('Content-Type: application/json');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') exit;
+
+        $email = trim($_POST['email'] ?? '');
+        $apiKey = trim($_POST['apiKey'] ?? '');
+
+        if (!$email || !$apiKey) {
+            echo json_encode(['status' => 'error', 'msg' => 'Correo y Llave son obligatorios.']);
+            exit;
+        }
+
+        // 🔹 Verificar si la API Key ya existe (evitar duplicados)
+        $keys = $this->_leer_api_keys();
+        foreach ($keys as $storedData) {
+            if ($storedData['key'] === $apiKey) {
+                echo json_encode(['status' => 'error', 'msg' => 'Esta API Key ya se encuentra registrada en el sistema.']);
+                exit;
+            }
+        }
+
+        // 🔹 VALIDAR LA LLAVE CON GEMINI ANTES DE GUARDAR
+        $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=$apiKey";
+        $payload = [
+            "contents" => [
+                ["parts" => [["text" => "Test"]]]
+            ]
+        ];
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        
+        $response = curl_exec($ch);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        $jsonRes = json_decode($response, true);
+
+        if ($curlError || isset($jsonRes['error'])) {
+            $msg = $jsonRes['error']['message'] ?? ($curlError ?: 'Error desconocido al validar la llave.');
+            echo json_encode(['status' => 'error', 'msg' => 'Gemini rechazó la llave: ' . $msg]);
+            exit;
+        }
+
+        // Usamos el email como índice para evitar duplicados
+        $keys[$email] = [
+            'email' => $email,
+            'key' => $apiKey,
+            'fecha' => date('Y-m-d H:i:s')
+        ];
+
+        $this->_guardar_api_keys_file($keys);
+        echo json_encode(['status' => 'ok', 'msg' => 'API Key guardada correctamente.']);
+        exit;
+    }
+
+    public function eliminar_api_key() {
+        header('Content-Type: application/json');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') exit;
+
+        $email = trim($_POST['email'] ?? '');
+        $keys = $this->_leer_api_keys();
+
+        if (isset($keys[$email])) {
+            unset($keys[$email]);
+            $this->_guardar_api_keys_file($keys);
+        }
+        echo json_encode(['status' => 'ok', 'msg' => 'API Key eliminada.']);
+        exit;
+    }
+
+    /* ============================================================
+       📡📡 API Y LÓGICA DEL SERVIDOR IA (LOCAL)
+       ============================================================ */
+
+    public function cambiar_estado_server()
+    {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $nuevo_estado = $_POST['estado'] ?? '0';
+            
+            if (file_put_contents('server_status.txt', $nuevo_estado) === false) {
+                echo json_encode(['success' => false, 'mensaje' => 'Error: No se pudo guardar el estado. Verifique permisos de escritura.']);
+                exit;
+            }
+            
+            // Opcional: Limpiar lista de clientes al desactivar/activar
+            if ($nuevo_estado == '0') {
+                file_put_contents('connected_clients.json', json_encode([]));
+            }
+
+            echo json_encode([
+                'success' => true, 
+                'estado' => $nuevo_estado,
+                'mensaje' => $nuevo_estado == '1' ? 'El servidor está ACTIVO' : 'El servidor está DESACTIVADO'
+            ]);
+            exit;
+        }
+    }
+
+    public function api_verificar_estado()
+    {
+        header('Content-Type: application/json');
+        $estado = file_exists('server_status.txt') ? trim(file_get_contents('server_status.txt')) : '0';
+        echo json_encode(['estado' => $estado]);
+        exit;
+    }
+
+    // 📱 VISTA PARA EL TELÉFONO (Asegúrate de tener esta función)
+    public function vista_cliente_movil()
+    {
+        // Cargar datos para el formulario de bautizo
+        $tipos_celebracion = $this->model->obtener_todos("tipo_celebracion");
+        $ministros = $this->model->obtener_todos("ministro_celebrante");
+        $jerarquias = $this->model->obtener_todos("jerarquia_ministro");
+        // Esta vista no usa el layout principal para ser más ligera en el móvil
+        require_once "view/cliente_movil.php";
+    }
+
+    public function api_registrar_cliente()
+    {
+        header('Content-Type: application/json');
+        
+        // 1. Verificar si el servidor está ACTIVO
+        $estado_server = file_exists('server_status.txt') ? trim(file_get_contents('server_status.txt')) : '0';
+        if ($estado_server !== '1') {
+            echo json_encode(['success' => false, 'message' => 'El servidor está cerrado. Pida al administrador que lo active.']);
+            exit;
+        }
+
+        $nombre = $_POST['nombre'] ?? '';
+        if (empty($nombre)) {
+            echo json_encode(['success' => false, 'message' => 'El nombre es obligatorio.']);
+            exit;
+        }
+
+        $archivo = 'connected_clients.json';
+        $content = file_exists($archivo) ? file_get_contents($archivo) : '{}';
+        $clientes = json_decode($content, true);
+        if (!is_array($clientes)) $clientes = [];
+
+        // Migración: Si el archivo tiene el formato antiguo (lista simple), lo convertimos
+        if (isset($clientes[0])) {
+            $temp = [];
+            foreach($clientes as $c) $temp[$c] = time();
+            $clientes = $temp;
+        }
+        
+        // Guardamos nombre y HORA actual (timestamp)
+        $clientes[$nombre] = time();
+        file_put_contents($archivo, json_encode($clientes));
+
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
+    public function api_desconectar_cliente()
+    {
+        header('Content-Type: application/json');
+        $nombre = $_POST['nombre'] ?? '';
+        
+        if (!empty($nombre)) {
+            $archivo = 'connected_clients.json';
+            $content = file_exists($archivo) ? file_get_contents($archivo) : '{}';
+            $clientes = json_decode($content, true);
+            
+            // Manejo formato antiguo
+            if (is_array($clientes) && isset($clientes[0])) {
+                if (($key = array_search($nombre, $clientes)) !== false) {
+                    unset($clientes[$key]);
+                    $clientes = array_values($clientes);
+                }
+            } elseif (is_array($clientes)) {
+                // Formato nuevo (asociativo)
+                if (isset($clientes[$nombre])) {
+                    unset($clientes[$nombre]);
+                }
+            }
+            file_put_contents($archivo, json_encode($clientes));
+        }
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
+    // 💓 NUEVA FUNCIÓN: Recibe el latido del cliente
+    public function api_heartbeat()
+    {
+        header('Content-Type: application/json');
+        $nombre = $_POST['nombre'] ?? '';
+
+        if (!empty($nombre)) {
+            $archivo = 'connected_clients.json';
+            $content = file_exists($archivo) ? file_get_contents($archivo) : '{}';
+            $clientes = json_decode($content, true);
+            if (!is_array($clientes)) $clientes = [];
+
+            // Si es formato antiguo, convertir
+            if (isset($clientes[0])) {
+                $temp = [];
+                foreach($clientes as $c) $temp[$c] = time();
+                $clientes = $temp;
+            }
+
+            // Actualizar la hora de "última vez visto"
+            $clientes[$nombre] = time();
+            file_put_contents($archivo, json_encode($clientes));
+        }
+
+        // Devolvemos el estado del server para que el móvil sepa si debe salir
+        $estado = file_exists('server_status.txt') ? trim(file_get_contents('server_status.txt')) : '0';
+        echo json_encode(['estado' => $estado]);
+        exit;
+    }
+
+    public function api_obtener_clientes()
+    {
+        header('Content-Type: application/json');
+        $archivo = 'connected_clients.json';
+        $content = file_exists($archivo) ? file_get_contents($archivo) : '{}';
+        $clientes = json_decode($content, true);
+        if (!is_array($clientes)) $clientes = [];
+
+        // Si es formato antiguo, devolverlo tal cual (se arreglará en el próximo registro/heartbeat)
+        if (isset($clientes[0])) {
+            echo json_encode($clientes);
+            exit;
+        }
+
+        // 🧹 LIMPIEZA AUTOMÁTICA
+        // Si un cliente no ha dado señal en 5 segundos, lo borramos
+        $ahora = time();
+        $limite = 5; // segundos de tolerancia
+        $cambios = false;
+
+        foreach ($clientes as $nombre => $ultimoVisto) {
+            if (($ahora - $ultimoVisto) > $limite) {
+                unset($clientes[$nombre]);
+                $cambios = true;
+            }
+        }
+
+        if ($cambios) {
+            file_put_contents($archivo, json_encode($clientes));
+        }
+
+        // Devolver solo los nombres (las claves del array)
+        echo json_encode(array_keys($clientes));
+        exit;
+    }
+
+    public function api_procesar_imagen()
+    {
+        header('Content-Type: application/json');
+
+        // 1. Verificar estado del servidor
+        $estado_server = file_exists('server_status.txt') ? trim(file_get_contents('server_status.txt')) : '0';
+        if ($estado_server !== '1') {
+            echo json_encode(['error' => 'El sistema está desactivado por el administrador.']);
+            exit;
+        }
+
+        if (!isset($_FILES['imagen']) || $_FILES['imagen']['error'] !== UPLOAD_ERR_OK) {
+            echo json_encode(['error' => 'No se recibió ninguna imagen válida.']);
+            exit;
+        }
+
+        // 2. Preparar imagen para Gemini
+        $path = $_FILES['imagen']['tmp_name'];
+        $type = $_FILES['imagen']['type'];
+        $data = file_get_contents($path);
+        $base64 = base64_encode($data);
+
+        // 🔹 Obtener lista de ministros de la BD para el prompt
+        $resMinistros = $this->model->obtener_todos("ministro_celebrante");
+        $listaMinistros = [];
+        if ($resMinistros) {
+            while ($row = $resMinistros->fetch_assoc()) {
+                $listaMinistros[] = $row['Nom'] . ' ' . $row['Ape'];
+            }
+        }
+        $ministrosString = implode(", ", $listaMinistros);
+
+        $prompt = 'Realiza una extracción de texto de la imagen proporcionada mediante un análisis exhaustivo carácter por carácter (OCR de alta precisión). La imagen contiene una o más actas de Fe de Bautismo. Debes identificar cada letra, número y carácter especial, considerando caligrafía antigua o manuscrita.
+
+Antes de comenzar la transcripción, lee todas las instrucciones a continuación y aplícalas rigurosamente.
+
+## Instrucciones paso a paso:
+
+    - **Diferenciación de letras confusas:** Presta especial atención a la distinción entre \'B\' y \'D\' mayúsculas. La \'B\' suele tener un trazo inicial con base más ancha o una conexión específica con la siguiente letra, mientras que la \'D\' tiene un bucle superior único.
+    - **Regla para la \'S\' sola:** Ignora cualquier \'S\' que se aparezca a un & y que este sola no la incluyas en la transcripción.
+    - **Fidelidad de datos:** Mantén la ortografía, acentuación y abreviaturas exactas del documento original (ej. si dice "Bautizé", no lo corrijas a "Bauticé"). Si un dato no es legible o no existe, usa `null`.
+**Control sobre Fechas:**
+Las fechas extraidas deben de ser interpretadas en formato DD/MM/YYYY. 
+**Control Folio N°:**
+El folio N. lo puedes encontrar como folio o como un numero en la parte superio de la imagen.
+- **instrucciones para extraer la clave: Observaciones:** para esta clave: limitate a extraer exactamente lo que te digo, debajo del codigo de celebracion que en la imagen se identifica con "N°" puedes encontrar un texto puede ser un nombre y apellido  puedes tomarlo como Observaciones, ese texto es el que debes colocar en la clave Observaciones y si en la imagen en la clave observaciones hay algo concatena las dos observaciones.
+**Estructura de los datos:**
+    La imagen puede contener una o más Fe de Bautismo. Devuelve SIEMPRE un arreglo JSON `[...]` que contenga un objeto por cada acta encontrada. No devuelvas un objeto raíz, sino la lista directamente. Devuelve únicamente el JSON, sin explicaciones ni bloques de código markdown.
+
+    ```json
+    [
+      {
+      "Nombre del Bautizado": "",
+      "Apellido del Bautizado": "",
+      "Nombre del Padre": "",
+      "Apellido del Padre": "",
+      "Nombre de la Madre": "",
+      "Apellido de la Madre": "",
+      "Filiacion": "",
+      "Lugar de nacimiento": "",
+      "Fecha de nacimiento": "",
+      "Fecha de bautizo": "",
+      "Nombre de la Madrina": "",
+      "Apellido de la madrina": "",
+      "Nombre del Padrino": "",
+      "Apellido del Padrino": "",
+      "Ministro": "",
+      "N°": "",
+      "Folio N°": "",
+      "Observaciones": "",
+      "Observaciones2": "",
+      "Registro Civil": ""
+      }
+    ]
+    ```
+
+    (' . $ministrosString . ') la clave ministro la vas a comparar con estos nombres si considera que es el mismo nombre o mismo ministro de esta lista vas a usar tal cual el nombre que esta en la lista. si no esta en la lista vas a ponerlo tal cual lo extragistes.';
+
+        $payload = [
+            "contents" => [
+                [
+                    "parts" => [
+                        ["text" => $prompt],
+                        [
+                            "inline_data" => [
+                                "mime_type" => $type,
+                                "data" => $base64
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ];
+
+        // 3. Obtener llaves y preparar ciclo de intentos (Fallback)
+        $keysGuardadas = $this->_leer_api_keys();
+        $keysToTry = [];
+
+        if (!empty($keysGuardadas)) {
+            $keysToTry = array_values($keysGuardadas);
+            shuffle($keysToTry); // Mezclar para balancear carga
+        } else {
+            // Llave por defecto si no hay registradas
+            $keysToTry[] = [
+                'email' => 'Sistema (Default)',
+                'key' => 'TU_API_KEY_DE_RESPALDO_AQUI'
+            ];
+        }
+
+        $lastError = "No se pudo procesar la solicitud.";
+        $lastEmail = "";
+        $success = false;
+        $finalResponse = "";
+
+        foreach ($keysToTry as $kData) {
+            $apiKey = $kData['key'];
+            $email = $kData['email'];
+            
+            $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=$apiKey";
+
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+            
+            $response = curl_exec($ch);
+            $curlErrno = curl_errno($ch);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            if ($curlErrno) {
+                $lastError = "Error de conexión: " . $curlError;
+                $lastEmail = $email;
+                continue; // Intentar siguiente llave
+            }
+
+            $jsonRes = json_decode($response, true);
+
+            // Si hay error explícito en el JSON (ej. quota exceeded, key invalid)
+            if (isset($jsonRes['error'])) {
+                $lastError = $jsonRes['error']['message'] ?? "Error desconocido de API";
+                $lastEmail = $email;
+                continue; // Intentar siguiente llave
+            }
+
+            // Éxito
+            $success = true;
+            $finalResponse = $response;
+            break; // Salir del ciclo
+        }
+
+        if ($success) {
+            echo $finalResponse;
+        } else {
+            // Fallaron todas
+            echo json_encode([
+                'error' => "Fallo con todas las llaves. Último intento ($lastEmail): $lastError"
+            ]);
+        }
+        exit;
     }
 
     /* ============================================================

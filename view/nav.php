@@ -57,6 +57,7 @@ $rolNombre = $roles[$rolId] ?? 'Invitado';
             <?php if (in_array($rolId, [10,20,30])): ?>
               <li><a class="dropdown-item" href="?controller=sacrej&action=vista_bautizos">Registrar Bautizo</a></li>
               <li><a class="dropdown-item" href="?controller=sacrej&action=vista_celebraciones_registradas">Celebraciones Registradas</a></li>
+              <li><a class="dropdown-item" href="?controller=sacrej&action=vista_desplegar_server">Desplegar Server</a></li>
             <?php elseif ($rolId == 40): ?>
               <li><a class="dropdown-item" href="#">Gestión de Clases</a></li>
             <?php elseif ($rolId == 50): ?>
@@ -77,6 +78,7 @@ $rolNombre = $roles[$rolId] ?? 'Invitado';
             <li><a class="dropdown-item" href="?controller=sacrej&action=vista_jerarquias">Jerarquías</a></li>
             <li><a class="dropdown-item" href="index.php?controller=sacrej&action=vista_celebraciones">Celebraciones</a></li>
             <li><a class="dropdown-item" href="?controller=sacrej&action=vista_usuarios">Usuarios</a></li>
+            <li><a class="dropdown-item" href="?controller=sacrej&action=vista_administrar_api">Administrar API Key Gemini</a></li>
           </ul>
         </li>
         <?php endif; ?>

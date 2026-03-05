@@ -1,0 +1,15 @@
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Archivos generados dinámicamente por tu sistema (logs y estados)
+server_status.txt
+connected_clients.json
+debug_*.txt
+*.log
+
+# Herramientas de un solo uso (seguridad)
+tools/generar_hash.php
+
+# Archivos de configuración y claves (NO SUBIR)
+api_keys.enc

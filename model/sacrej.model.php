@@ -363,7 +363,8 @@ class sacrejmodel
         if (!$ok) {
             return ['status' => 'error', 'msg' => 'Error al ejecutar consulta: ' . $stmt->error];
         }
-        return ['status' => 'ok', 'msg' => 'Ministro registrado correctamente.'];
+        $id = $this->conexion->insert_id;
+        return ['status' => 'ok', 'msg' => 'Ministro registrado correctamente.', 'id' => $id];
     } catch (Exception $e) {
         return ['status' => 'error', 'msg' => 'Excepción: ' . $e->getMessage()];
     }
@@ -551,6 +552,29 @@ class sacrejmodel
                 INNER JOIN individuos i ON i.IdInd = ic.IdInd
                 WHERE c.TipCel = 1            -- 1 = Bautizo (ajusta si usas otro código)
                 ORDER BY c.FechCel ASC";
+
+        return $this->conexion->query($sql);
+    }
+
+    // 🔹 Obtener reporte completo de bautizados para Desplegar Server
+    public function obtener_reporte_bautizados()
+    {
+        $sql = "SELECT 
+                    c.IdCel,
+                    i.IdInd,
+                    i.NomInd,
+                    i.ApeInd,
+                    i.FecNacInd,
+                    i.LugNacInd,
+                    c.FechCel,
+                    c.NumLib,
+                    c.NumFol,
+                    c.Lugar as LugarCelebracion
+                FROM celebracion c
+                INNER JOIN individuo_celebracion ic ON ic.IdCel = c.IdCel
+                INNER JOIN individuos i ON i.IdInd = ic.IdInd
+                WHERE c.TipCel = 1
+                ORDER BY c.FechCel DESC";
 
         return $this->conexion->query($sql);
     }
