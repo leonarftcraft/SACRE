@@ -152,6 +152,7 @@
         let usuarioActual = "";
         let libroActual = null;
         let folioActual = null;
+        let rutaImagenActual = ""; // 🔹 Variable para guardar la ruta de la foto actual
         
         // 🔹 Datos de ministros en JS para validación
         let ministrosData = [
@@ -193,6 +194,7 @@
             $('#btnGuardarTodo').addClass('hidden');
             folioActual = null; // Resetear folio (cambia por página)
             $('#folioGeneral').val('');
+            rutaImagenActual = "";
         }
 
         function crearHtmlFormulario(index) {
@@ -212,6 +214,7 @@
                             <div class="col-12"><label class="form-label small">N°</label><input type="number" id="IdCel${idSuffix}" name="IdCel" class="form-control form-control-sm" required></div>
                             <input type="hidden" id="NumFol${idSuffix}" name="NumFol">
                             <input type="hidden" id="NumLib${idSuffix}" name="NumLib">
+                            <input type="hidden" id="RutaImagen${idSuffix}" name="RutaImagen">
                         </div>
                         
                         <!-- Bautizado -->
@@ -338,6 +341,7 @@
             $('#IdCel' + idSuffix).val(cleanValue(datos['N°']));
             // El folio se maneja globalmente ahora
             $('#NomInd' + idSuffix).val(cleanValue(datos['Nombre del Bautizado']));
+            $('#RutaImagen' + idSuffix).val(rutaImagenActual); // 🔹 Asignar ruta de imagen
             $('#ApeInd' + idSuffix).val(cleanValue(datos['Apellido del Bautizado']));
             $('#LugNacInd' + idSuffix).val(cleanValue(datos['Lugar de nacimiento']));
             $('#FecNacInd' + idSuffix).val(formatearFechaParaInput(cleanValue(datos['Fecha de nacimiento'])));
@@ -509,16 +513,33 @@
                     success: function(res) {
                         $('#loader').addClass('hidden');
                         
+                        // 🔹 Adaptador para la nueva respuesta del controlador
+                        let geminiRes = res;
+                        
+                        if (!res) {
+                            Swal.fire('Error', 'La respuesta del servidor está vacía.', 'error');
+                            return;
+                        }
+
+                        if (res.image_path) {
+                            rutaImagenActual = res.image_path; // Guardamos la ruta
+                            geminiRes = res.gemini_data;       // Usamos los datos de IA
+                        }
+
                         // Gemini devuelve un JSON complejo, intentamos parsearlo
                         try {
                             // 1. Manejo de errores (del servidor local o de Gemini)
-                            if (res.error) {
+                            if (!geminiRes) {
+                                throw new Error("No se recibieron datos de la IA.");
+                            }
+
+                            if (geminiRes.error) {
                                 let msg = "";
-                                if (typeof res.error === 'string') {
-                                    msg = res.error;
-                                } else if (res.error.message) {
+                                if (typeof geminiRes.error === 'string') {
+                                    msg = geminiRes.error;
+                                } else if (geminiRes.error.message) {
                                     // Error de la API de Google (objeto)
-                                    msg = "Google API Error: " + res.error.message;
+                                    msg = "Google API Error: " + geminiRes.error.message;
                                 } else {
                                     msg = "Error desconocido en la respuesta.";
                                 }
@@ -536,8 +557,8 @@
                                 // 2. Validar estructura de respuesta exitosa de Gemini
                                 let textoCompletoParaDisplay = "No se pudo extraer texto.";
                                 
-                                if (res.candidates && res.candidates.length > 0) {
-                                const candidate = res.candidates[0];
+                                if (geminiRes.candidates && geminiRes.candidates.length > 0) {
+                                const candidate = geminiRes.candidates[0];
                                 if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
                                     let rawText = candidate.content.parts[0].text;
                                     
@@ -638,8 +659,21 @@
                                     }
                                 }
                             } else {
-                                console.warn("Respuesta sin candidatos:", res);
-                                textoCompletoParaDisplay = "La IA no devolvió resultados.";
+                                // 🔹 CASO: IA no devolvió nada útil -> Ofrecer manual
+                                Swal.fire({
+                                    title: 'Sin resultados',
+                                    text: 'La IA no pudo leer el documento. ¿Deseas ingresar los datos manualmente?',
+                                    icon: 'warning',
+                                    showCancelButton: true,
+                                    confirmButtonText: 'Sí, manual',
+                                    cancelButtonText: 'Cancelar'
+                                }).then((r) => {
+                                    if(r.isConfirmed) {
+                                        // Simular un acta vacía para abrir el formulario
+                                        mostrarFormularios([{}]);
+                                    }
+                                });
+                                return; // Detener flujo automático
                             }
 
                             // 🔹 Mostrar formulario y el texto extraído como referencia
@@ -833,6 +867,7 @@
                     poblarFormulario(datosActa, index);
                     $('#NumLib_' + index).val(libroActual);
                     $('#NumFol_' + index).val(folioActual);
+                    $('#RutaImagen_' + index).val(rutaImagenActual);
                 }
             });
             
@@ -925,10 +960,11 @@
                     const formData = form.serializeArray();
                     const jsonData = {};
                     formData.forEach((item) => (jsonData[item.name] = item.value));
+                    jsonData['usuario_envio'] = usuarioActual; // Añadir quién envía
 
                     try {
                         const res = await $.ajax({
-                            url: "?controller=sacrej&action=agregar_bautizo",
+                            url: "?controller=sacrej&action=api_enviar_bautizos_temporal",
                             type: "POST",
                             dataType: "json",
                             data: jsonData
@@ -938,7 +974,7 @@
                             guardados++;
                             form.data('saved', true);
                             form.find('input, select, textarea').prop('disabled', true);
-                            form.find('.card-header').addClass('bg-success text-white').append(' - GUARDADO');
+                            form.find('.card-header').addClass('bg-info text-white').append(' - ENVIADO');
                         } else {
                             errores++;
                         }
@@ -951,10 +987,10 @@
                 $btn.data("sending", false).prop("disabled", false).text("GUARDAR TODO");
 
                 if (errores === 0) {
-                    Swal.fire('Éxito', `Se guardaron ${guardados} registros correctamente.`, 'success')
+                    Swal.fire('Éxito', `Se enviaron ${guardados} registros al servidor.`, 'success')
                         .then(() => volverACamara());
                 } else {
-                    Swal.fire('Atención', `Se guardaron ${guardados} registros. Hubo ${errores} errores. Revise los datos e intente de nuevo.`, 'warning');
+                    Swal.fire('Atención', `Se enviaron ${guardados} registros. Hubo ${errores} errores. Revise los datos e intente de nuevo.`, 'warning');
                 }
             });
         });

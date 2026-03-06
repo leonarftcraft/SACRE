@@ -97,6 +97,7 @@ class SacrejController
         
         // Obtener datos para las tablas
         $listaBautizados = $this->model->obtener_reporte_bautizados();
+        $ministros = $this->model->obtener_todos("ministro_celebrante");
         
         // 🔹 Obtener IP y generar URL para móviles
         $ip_server = getHostByName(getHostName());
@@ -406,6 +407,7 @@ class SacrejController
 
     public function api_procesar_imagen()
     {
+        if (ob_get_length()) ob_clean(); // 🔹 Limpiar buffer para evitar JSON corrupto
         header('Content-Type: application/json');
 
         // 1. Verificar estado del servidor
@@ -423,7 +425,22 @@ class SacrejController
         // 2. Preparar imagen para Gemini
         $path = $_FILES['imagen']['tmp_name'];
         $type = $_FILES['imagen']['type'];
+
         $data = file_get_contents($path);
+        
+        // 🔹 GUARDAR IMAGEN EN BLOQUES (AÑO/MES)
+        $bloqueDir = 'view/images/actas/' . date('Y') . '/' . date('m') . '/';
+        if (!file_exists($bloqueDir)) {
+            mkdir($bloqueDir, 0777, true);
+        }
+        
+        $extension = pathinfo($_FILES['imagen']['name'], PATHINFO_EXTENSION) ?: 'jpg';
+        $nombreArchivo = 'acta_' . time() . '_' . uniqid() . '.' . $extension;
+        $rutaFinal = $bloqueDir . $nombreArchivo;
+        
+        // Guardamos una copia (move_uploaded_file movería el original, mejor copy si leemos $data antes)
+        file_put_contents($rutaFinal, $data);
+
         $base64 = base64_encode($data);
 
         // 🔹 Obtener lista de ministros de la BD para el prompt
@@ -557,12 +574,132 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
         }
 
         if ($success) {
-            echo $finalResponse;
+            // Decodificamos la respuesta de Gemini para envolverla junto con la ruta
+            $geminiData = json_decode($finalResponse, true);
+            echo json_encode([
+                'gemini_data' => $geminiData,
+                'image_path' => $rutaFinal
+            ]);
         } else {
             // Fallaron todas
             echo json_encode([
                 'error' => "Fallo con todas las llaves. Último intento ($lastEmail): $lastError"
             ]);
+        }
+        exit;
+    }
+
+    /* ============================================================
+       📥 RECEPCIÓN TEMPORAL DE BAUTIZOS (DESDE MÓVIL)
+       ============================================================ */
+
+    public function api_enviar_bautizos_temporal()
+    {
+        header('Content-Type: application/json');
+        
+        $datos = $_POST;
+        $datos['timestamp'] = time();
+        
+        $archivo = 'pending_bautizos.json';
+        $pendientes = [];
+        
+        if (file_exists($archivo)) {
+            $content = file_get_contents($archivo);
+            $pendientes = json_decode($content, true) ?? [];
+        }
+
+        $pendientes[] = $datos;
+
+        if (file_put_contents($archivo, json_encode($pendientes))) {
+            echo json_encode(['status' => 'ok', 'msg' => 'Enviado al servidor para revisión.']);
+        } else {
+            echo json_encode(['status' => 'error', 'msg' => 'Error al guardar en el servidor.']);
+        }
+        exit;
+    }
+
+    public function api_obtener_bautizos_temporales()
+    {
+        header('Content-Type: application/json');
+        $archivo = 'pending_bautizos.json';
+        if (file_exists($archivo)) {
+            echo file_get_contents($archivo);
+        } else {
+            echo json_encode([]);
+        }
+        exit;
+    }
+
+    public function api_eliminar_bautizo_temporal()
+    {
+        header('Content-Type: application/json');
+        $index = $_POST['index'] ?? null;
+        
+        if ($index === null) {
+            echo json_encode(['status' => 'error', 'msg' => 'Índice no proporcionado.']);
+            exit;
+        }
+
+        $archivo = 'pending_bautizos.json';
+        if (!file_exists($archivo)) {
+            echo json_encode(['status' => 'error', 'msg' => 'No hay datos.']);
+            exit;
+        }
+
+        $pendientes = json_decode(file_get_contents($archivo), true) ?? [];
+        
+        if (!isset($pendientes[$index])) {
+            echo json_encode(['status' => 'error', 'msg' => 'Registro no encontrado.']);
+            exit;
+        }
+
+        $registro = $pendientes[$index];
+        $rutaImagen = $registro['RutaImagen'] ?? '';
+        $eliminados = 0;
+
+        if (!empty($rutaImagen)) {
+            // 1. Eliminar archivo de imagen físico si existe
+            if (file_exists($rutaImagen)) {
+                unlink($rutaImagen);
+            }
+
+            // 2. Eliminar TODOS los registros que compartan esa misma imagen
+            $nuevosPendientes = [];
+            foreach ($pendientes as $p) {
+                if (isset($p['RutaImagen']) && $p['RutaImagen'] === $rutaImagen) {
+                    $eliminados++; // No lo agregamos al nuevo array (se elimina)
+                } else {
+                    $nuevosPendientes[] = $p; // Se conserva
+                }
+            }
+            $pendientes = $nuevosPendientes;
+        } else {
+            // Si no tiene imagen (registro manual puro), eliminar solo ese índice
+            array_splice($pendientes, $index, 1);
+            $eliminados = 1;
+        }
+        
+        file_put_contents($archivo, json_encode($pendientes));
+        echo json_encode(['status' => 'ok', 'msg' => "Se eliminaron $eliminados registros y la imagen asociada."]);
+        exit;
+    }
+
+    public function api_editar_bautizo_temporal()
+    {
+        header('Content-Type: application/json');
+        $index = $_POST['index'] ?? null;
+        $archivo = 'pending_bautizos.json';
+        $pendientes = json_decode(file_get_contents($archivo), true) ?? [];
+
+        if ($index !== null && isset($pendientes[$index])) {
+            $nuevosDatos = $_POST;
+            unset($nuevosDatos['index']); // No guardar el índice en el JSON
+            // Fusionar datos nuevos con los existentes (para mantener timestamp, usuario, etc.)
+            $pendientes[$index] = array_merge($pendientes[$index], $nuevosDatos);
+            file_put_contents($archivo, json_encode($pendientes));
+            echo json_encode(['status' => 'ok', 'msg' => 'Registro actualizado.']);
+        } else {
+            echo json_encode(['status' => 'error', 'msg' => 'Error al actualizar.']);
         }
         exit;
     }
