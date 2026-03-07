@@ -138,8 +138,9 @@
                         </div>
                     </form>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer flex-column">
                     <button type="button" class="btn btn-primary w-100" onclick="guardarNuevoMinistro()">Guardar y Continuar</button>
+                    <button type="button" id="btnOmitirMinistro" class="btn btn-outline-secondary w-100 mt-2" onclick="omitirRegistroMinistro()">Continuar sin registrar</button>
                 </div>
             </div>
         </div>
@@ -784,6 +785,7 @@
             $('#newMinNom').val(nom);
             $('#newMinApe').val(ape);
             $('#newMinJer').val('');
+            $('#btnOmitirMinistro').show();
             
             const el = document.getElementById('modalNuevoMinistro');
             const modal = bootstrap.Modal.getOrCreateInstance(el);
@@ -797,10 +799,22 @@
             $('#newMinNom').val('');
             $('#newMinApe').val('');
             $('#newMinJer').val('');
+            $('#btnOmitirMinistro').hide();
             
             const el = document.getElementById('modalNuevoMinistro');
             const modal = bootstrap.Modal.getOrCreateInstance(el);
             modal.show();
+        }
+
+        function omitirRegistroMinistro() {
+            if (colaMinistros.length > 0) {
+                colaMinistros.shift();
+                mostrarModalMinistro();
+            } else {
+                const el = document.getElementById('modalNuevoMinistro');
+                const modal = bootstrap.Modal.getOrCreateInstance(el);
+                modal.hide();
+            }
         }
 
         function guardarNuevoMinistro() {

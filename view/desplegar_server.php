@@ -74,10 +74,15 @@
                                     <td><?= date('d/m/Y', strtotime($row['FechCel'])) ?></td>
                                     <td><?= htmlspecialchars($row['NumLib']) ?></td>
                                     <td><?= htmlspecialchars($row['NumFol']) ?></td>
-                                    <td>
+                                    <td class="text-nowrap">
                                         <button class="btn btn-sm btn-info text-white btnDetalle" data-idcel="<?= $row['IdCel'] ?>">
                                             Ver
                                         </button>
+                                        <?php if (!empty($row['UrlArchivo'])): ?>
+                                            <a href="<?= htmlspecialchars($row['UrlArchivo']) ?>" target="_blank" class="btn btn-sm btn-success ms-1" title="Ver Imagen">
+                                                📷
+                                            </a>
+                                        <?php endif; ?>
                                     </td>
                                 </tr>
                                 <?php 
@@ -119,8 +124,12 @@
     <div class="row mt-4">
         <div class="col-12">
             <div class="card shadow-sm">
-                <div class="card-header bg-warning text-dark">
+                <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">⏳ Bautizos Recibidos (Desde Móviles)</h5>
+                    <button class="btn btn-success btn-sm fw-bold" onclick="guardarTodosPendientes()">
+                        💾 Guardar Todo
+                    </button>
+                    <span class="badge bg-dark text-warning fs-6" id="contadorPendientes">0</span>
                 </div>
                 <div class="card-body p-0">
                     <div style="max-height: 400px; overflow-y: auto;">
@@ -276,6 +285,8 @@
                 <p><strong>Padrinos:</strong> <span id="dPadrinos"></span></p>
                 <p><strong>Registro Civil:</strong> <span id="dRegCiv"></span></p>
                 <p><strong>Observaciones:</strong> <span id="dObs"></span></p>
+                <div id="dImagenContainer" class="mt-3"></div>
+                <div id="dDigitalizador" class="small text-muted fst-italic mt-1"></div>
             </div>
         </div>
       </div>
@@ -328,19 +339,39 @@ function desactivarServer(callback) {
 
 // 🔹 Lógica para Exportar a Excel (Genera un archivo .xls simple basado en HTML)
 function exportarExcel() {
-    var table = document.getElementById("tablaCompleta");
-    var html = table.outerHTML;
-    
-    // Crear un blob con el contenido HTML de la tabla
-    var url = 'data:application/vnd.ms-excel,' + encodeURIComponent(html);
-    
-    // Crear enlace temporal para descarga
-    var downloadLink = document.createElement("a");
-    document.body.appendChild(downloadLink);
-    downloadLink.href = url;
-    downloadLink.download = "reporte_bautizados.xls";
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
+    Swal.fire({
+        title: 'Seguridad',
+        text: 'Ingrese su contraseña de administrador para exportar los datos:',
+        input: 'password',
+        inputAttributes: {
+            autocapitalize: 'off',
+            placeholder: 'Contraseña'
+        },
+        showCancelButton: true,
+        confirmButtonText: 'Validar y Exportar',
+        cancelButtonText: 'Cancelar',
+        showLoaderOnConfirm: true,
+        preConfirm: (password) => {
+            return $.post('?controller=sacrej&action=validar_clave_exportacion', { password: password })
+                .then(response => {
+                    if (!response.success) {
+                        throw new Error(response.msg || 'Contraseña incorrecta');
+                    }
+                    return response;
+                })
+                .catch(error => {
+                    Swal.showValidationMessage(`Error: ${error.message}`);
+                });
+        },
+        allowOutsideClick: () => !Swal.isLoading()
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // 🔹 Redirigir al controlador para descargar el reporte completo desde la BD
+            window.location.href = '?controller=sacrej&action=descargar_reporte_bautizos_completo';
+            
+            Swal.fire('Éxito', 'Exportación iniciada correctamente.', 'success');
+        }
+    });
 }
 
 // 🔹 Funciones para compartir URL
@@ -385,6 +416,7 @@ let datosPendientes = [];
 function actualizarPendientes() {
     $.get('?controller=sacrej&action=api_obtener_bautizos_temporales', function(data) {
         datosPendientes = data || [];
+        $('#contadorPendientes').text(datosPendientes.length);
         let html = '';
         if (datosPendientes.length > 0) {
             // Mostrar los más recientes primero (iterar al revés)
@@ -406,6 +438,7 @@ function actualizarPendientes() {
                     <td>${row.NumFol || ''}</td>
                     <td>${btnImagen}</td>
                     <td>
+                        <button class="btn btn-sm btn-success" onclick="guardarPendiente(${i})" title="Guardar en BD">💾</button>
                         <button class="btn btn-sm btn-warning" onclick="editarPendiente(${i})" title="Editar">✏️</button>
                         <button class="btn btn-sm btn-danger" onclick="eliminarPendiente(${i})" title="Eliminar">🗑️</button>
                     </td>
@@ -419,6 +452,39 @@ function actualizarPendientes() {
 }
 setInterval(actualizarPendientes, 3000);
 actualizarPendientes();
+
+function guardarPendiente(index) {
+    Swal.fire({
+        title: '¿Guardar este registro?',
+        text: "El bautizo se registrará permanentemente en la base de datos.",
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, guardar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Ejecutar Guardado Real
+            Swal.fire({ title: 'Guardando...', didOpen: () => Swal.showLoading() });
+            $.post('?controller=sacrej&action=api_aprobar_bautizo_temporal', { index: index }, function(saveRes) {
+                Swal.close();
+                if (saveRes.status === 'ok') {
+                    Swal.fire('Guardado', saveRes.msg, 'success').then(() => location.reload());
+                } else {
+                    Swal.fire('Error', saveRes.msg, 'error');
+                }
+            }, 'json');
+        }
+    });
+}
+
+function guardarTodosPendientes() {
+    Swal.fire({ title: 'Procesando...', didOpen: () => Swal.showLoading() });
+    $.post('?controller=sacrej&action=api_aprobar_todos_bautizos_temporales', function(res) {
+        Swal.close();
+        Swal.fire('Proceso finalizado', `Guardados: ${res.guardados}, Errores: ${res.errores}`, 'info')
+            .then(() => location.reload());
+    }, 'json');
+}
 
 function eliminarPendiente(index) {
     Swal.fire({
@@ -446,41 +512,59 @@ function editarPendiente(index) {
     let d = datosPendientes[index];
     if (!d) return;
 
-    // Llenar el formulario del modal
-    $('#editIndex').val(index);
-    $('#editIdCel').val(d.IdCel);
-    $('#editNumLib').val(d.NumLib);
-    $('#editNumFol').val(d.NumFol);
-    $('#editNomInd').val(d.NomInd);
-    $('#editApeInd').val(d.ApeInd);
-    $('#editFecNacInd').val(d.FecNacInd);
-    $('#editLugNacInd').val(d.LugNacInd);
-    $('#editFilInd').val(d.FilInd);
-    $('#editNomMad').val(d.NomMad);
-    $('#editApeMad').val(d.ApeMad);
-    $('#editNomPad').val(d.NomPad);
-    $('#editApePad').val(d.ApePad);
-    $('#editFechCel').val(d.FechCel);
-    $('#editLugar').val(d.Lugar);
-    $('#editIdMin').val(d.IdMin);
-    $('#editPad1Nom').val(d.Pad1Nom);
-    $('#editPad1Ape').val(d.Pad1Ape);
-    $('#editPad2Nom').val(d.Pad2Nom);
-    $('#editPad2Ape').val(d.Pad2Ape);
-    $('#editNotMar').val(d.NotMar);
-    $('#editRegCiv').val(d.RegCiv);
-    $('#editIdInd').val(d.IdInd);
-    $('#editSexInd').val(d.SexInd);
-    $('#editRutaImagen').val(d.RutaImagen || '');
+    // 🔹 Cargar lista actualizada de ministros vía AJAX
+    $.get('?controller=sacrej&action=api_obtener_ministros', function(ministros) {
+        let select = $('#editIdMin');
+        select.empty();
+        select.append('<option value="">Seleccione...</option>');
+        
+        if (ministros && ministros.length > 0) {
+            ministros.forEach(m => {
+                select.append(`<option value="${m.IdMinCel}">${m.Nom} ${m.Ape}</option>`);
+            });
+        }
 
-    // Mostrar enlace a imagen si existe
-    if (d.RutaImagen) {
-        $('#linkImagenContainer').html(`<a href="${d.RutaImagen}" target="_blank" class="btn btn-sm btn-info text-white">👁️ Ver Imagen Original</a>`);
-    } else {
-        $('#linkImagenContainer').html('<span class="text-muted small">Sin imagen</span>');
-    }
+        // Llenar el formulario del modal
+        $('#editIndex').val(index);
+        $('#editIdCel').val(d.IdCel);
+        $('#editNumLib').val(d.NumLib);
+        $('#editNumFol').val(d.NumFol);
+        $('#editNomInd').val(d.NomInd);
+        $('#editApeInd').val(d.ApeInd);
+        $('#editFecNacInd').val(d.FecNacInd);
+        $('#editLugNacInd').val(d.LugNacInd);
+        $('#editFilInd').val(d.FilInd);
+        $('#editNomMad').val(d.NomMad);
+        $('#editApeMad').val(d.ApeMad);
+        $('#editNomPad').val(d.NomPad);
+        $('#editApePad').val(d.ApePad);
+        $('#editFechCel').val(d.FechCel);
+        $('#editLugar').val(d.Lugar);
+        
+        // Seleccionar el ministro (ahora que la lista está actualizada)
+        $('#editIdMin').val(d.IdMin);
+        
+        $('#editPad1Nom').val(d.Pad1Nom);
+        $('#editPad1Ape').val(d.Pad1Ape);
+        $('#editPad2Nom').val(d.Pad2Nom);
+        $('#editPad2Ape').val(d.Pad2Ape);
+        $('#editNotMar').val(d.NotMar);
+        $('#editRegCiv').val(d.RegCiv);
+        $('#editIdInd').val(d.IdInd);
+        $('#editSexInd').val(d.SexInd);
+        $('#editRutaImagen').val(d.RutaImagen || '');
 
-    new bootstrap.Modal(document.getElementById('modalEditarPendiente')).show();
+        // Mostrar enlace a imagen si existe
+        if (d.RutaImagen) {
+            $('#linkImagenContainer').html(`<a href="${d.RutaImagen}" target="_blank" class="btn btn-sm btn-info text-white">👁️ Ver Imagen Original</a>`);
+        } else {
+            $('#linkImagenContainer').html('<span class="text-muted small">Sin imagen</span>');
+        }
+
+        new bootstrap.Modal(document.getElementById('modalEditarPendiente')).show();
+    }, 'json').fail(function() {
+        Swal.fire('Error', 'No se pudo cargar la lista de ministros.', 'error');
+    });
 }
 
 function guardarEdicionPendiente() {
@@ -529,6 +613,17 @@ $(document).on('click', '.btnDetalle', function() {
             $('#dPadrinos').text(d.padrinos);
             $('#dRegCiv').text(d.registro_civil);
             $('#dObs').text(d.observaciones);
+            
+            // 📷 Mostrar imagen si existe
+            $('#dDigitalizador').empty();
+            if (d.imagen) {
+                $('#dImagenContainer').html(`<a href="${d.imagen}" target="_blank" class="btn btn-sm btn-success w-100">📷 Ver Imagen del Acta</a>`);
+                if (d.digitalizador) {
+                    $('#dDigitalizador').text("Digitalizado por: " + d.digitalizador);
+                }
+            } else {
+                $('#dImagenContainer').html('<span class="text-muted small fst-italic">No tiene imagen asociada.</span>');
+            }
             
             new bootstrap.Modal(document.getElementById('modalDetalle')).show();
         } else {

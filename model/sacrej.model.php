@@ -231,10 +231,23 @@ class sacrejmodel
         return $resultado; // true si se actualizó correctamente
     }
     // 🔹 Registrar Bautizo
-    public function registrar_bautizo_completo($individuo, $madre, $padre, $padrinos, $celebracion, $enlace)
+    public function registrar_bautizo_completo($individuo, $madre, $padre, $padrinos, $celebracion, $enlace, $datosImagen = null)
     {
         $this->conexion->begin_transaction();
         try {
+            // 0️⃣ REGISTRAR IMAGEN (Si existe)
+            $idImgActa = null;
+            if ($datosImagen && !empty($datosImagen['UrlArchivo'])) {
+                $sqlImg = "INSERT INTO ImgActas (UrlArchivo, NombreDigitalizador) VALUES (?, ?)";
+                $stmtImg = $this->conexion->prepare($sqlImg);
+                $stmtImg->bind_param("ss", $datosImagen['UrlArchivo'], $datosImagen['NombreDigitalizador']);
+                if (!$stmtImg->execute()) {
+                    throw new Exception("Error al registrar imagen: " . $stmtImg->error);
+                }
+                $idImgActa = $this->conexion->insert_id;
+                $stmtImg->close();
+            }
+
             // 1️⃣ INDIVIDUO
             $sqlInd = "INSERT INTO individuos (IdInd, NomInd, ApeInd, LugNacInd, FecNacInd, SexInd, FilInd, IdUsu)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
@@ -279,10 +292,10 @@ class sacrejmodel
             }
 
             // 3️⃣ RELACIÓN individuo ↔ celebración
-            $sqlRel = "INSERT INTO individuo_celebracion (IdInd, IdCel, RegCiv, NotMar)
-                    VALUES (?, ?, ?, ?)";
+            $sqlRel = "INSERT INTO individuo_celebracion (IdInd, IdCel, RegCiv, NotMar, IdImgActa)
+                    VALUES (?, ?, ?, ?, ?)";
             $stmtRel = $this->conexion->prepare($sqlRel);
-            $stmtRel->bind_param("siss", $individuo['IdInd'], $celebracion['IdCel'], $enlace['RegCiv'], $enlace['NotMar']);
+            $stmtRel->bind_param("sissi", $individuo['IdInd'], $celebracion['IdCel'], $enlace['RegCiv'], $enlace['NotMar'], $idImgActa);
             if (!$stmtRel->execute()) {
                 throw new Exception("Error al vincular individuo con celebración: " . $stmtRel->error);
             }
@@ -322,7 +335,6 @@ class sacrejmodel
             return ['status' => 'error', 'msg' => $e->getMessage()];
         }
     }
-
 
     public function verificar_id_individuo($id)
     {
@@ -546,14 +558,159 @@ class sacrejmodel
                     i.NomInd,
                     i.ApeInd,
                     i.FecNacInd,
-                    c.FechCel
+                    i.SexInd,
+                    c.FechCel,
+                    m.Nom AS MinNom,
+                    m.Ape AS MinApe,
+                    img.UrlArchivo,
+                    img.NombreDigitalizador
                 FROM celebracion c
                 INNER JOIN individuo_celebracion ic ON ic.IdCel = c.IdCel
                 INNER JOIN individuos i ON i.IdInd = ic.IdInd
+                LEFT JOIN ministro_celebrante m ON m.IdMinCel = c.IdMin
+                LEFT JOIN ImgActas img ON img.IdImg = ic.IdImgActa
                 WHERE c.TipCel = 1            -- 1 = Bautizo (ajusta si usas otro código)
                 ORDER BY c.FechCel ASC";
 
         return $this->conexion->query($sql);
+    }
+
+    // 🔹 Obtener datos crudos para edición
+    public function obtener_datos_bautizo_por_id($idCel)
+    {
+        // 1. Datos principales
+        $sql = "SELECT c.*, ic.RegCiv, ic.NotMar, ic.IdImgActa, i.*, img.UrlArchivo, img.NombreDigitalizador
+                FROM celebracion c
+                JOIN individuo_celebracion ic ON c.IdCel = ic.IdCel
+                JOIN individuos i ON ic.IdInd = i.IdInd
+                LEFT JOIN ImgActas img ON ic.IdImgActa = img.IdImg
+                WHERE c.IdCel = ?";
+        $stmt = $this->conexion->prepare($sql);
+        $stmt->bind_param("i", $idCel);
+        $stmt->execute();
+        $main = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$main) return null;
+
+        // Normalizar clave: La BD devuelve 'idInd' pero el sistema espera 'IdInd'
+        if (isset($main['idInd'])) {
+            $main['IdInd'] = $main['idInd'];
+        }
+        $idInd = $main['IdInd'] ?? null;
+
+        // 2. Padres
+        $sqlPad = "SELECT * FROM padres WHERE IdInd = ?";
+        $stmtPad = $this->conexion->prepare($sqlPad);
+        $stmtPad->bind_param("s", $idInd);
+        $stmtPad->execute();
+        $resPad = $stmtPad->get_result();
+        $padres = [];
+        while ($p = $resPad->fetch_assoc()) {
+            $padres[] = $p;
+        }
+        $stmtPad->close();
+
+        // 3. Padrinos (TipCelPad = 1 para Bautizo)
+        $sqlPadr = "SELECT * FROM padrinos WHERE IdInd = ? AND TipCelPad = 1";
+        $stmtPadr = $this->conexion->prepare($sqlPadr);
+        $stmtPadr->bind_param("s", $idInd);
+        $stmtPadr->execute();
+        $resPadr = $stmtPadr->get_result();
+        $padrinos = [];
+        while ($p = $resPadr->fetch_assoc()) {
+            $padrinos[] = $p;
+        }
+        $stmtPadr->close();
+
+        return ['main' => $main, 'padres' => $padres, 'padrinos' => $padrinos];
+    }
+
+    // 🔹 Actualizar registro completo de bautizo
+    public function actualizar_bautizo($data)
+    {
+        $this->conexion->begin_transaction();
+        try {
+            $idCel = $data['IdCel'];
+            $idInd = $data['IdInd'];
+
+            // 1. Actualizar Individuo
+            $sqlInd = "UPDATE individuos SET NomInd=?, ApeInd=?, FecNacInd=?, LugNacInd=?, SexInd=?, FilInd=? WHERE IdInd=?";
+            $stmtInd = $this->conexion->prepare($sqlInd);
+            $stmtInd->bind_param("sssssis", 
+                $data['NomInd'], $data['ApeInd'], $data['FecNacInd'], $data['LugNacInd'], $data['SexInd'], $data['FilInd'], $idInd
+            );
+            $stmtInd->execute();
+            $stmtInd->close();
+
+            // 2. Actualizar Celebración
+            $sqlCel = "UPDATE celebracion SET FechCel=?, NumLib=?, NumFol=?, IdMin=?, Lugar=? WHERE IdCel=?";
+            $stmtCel = $this->conexion->prepare($sqlCel);
+            $stmtCel->bind_param("siiisi", 
+                $data['FechCel'], $data['NumLib'], $data['NumFol'], $data['IdMin'], $data['Lugar'], $idCel
+            );
+            $stmtCel->execute();
+            $stmtCel->close();
+
+            // 3. Actualizar Enlace (RegCiv, NotMar)
+            $sqlRel = "UPDATE individuo_celebracion SET RegCiv=?, NotMar=? WHERE IdCel=? AND IdInd=?";
+            $stmtRel = $this->conexion->prepare($sqlRel);
+            $stmtRel->bind_param("ssis", $data['RegCiv'], $data['NotMar'], $idCel, $idInd);
+            $stmtRel->execute();
+            $stmtRel->close();
+
+            // 4. Actualizar Padres (Borrar e insertar o Update condicional. Haremos Update por Sexo para simplificar)
+            // Madre (Sex=2)
+            $sqlMad = "UPDATE padres SET Nom=?, Ape=? WHERE IdInd=? AND Sex=2";
+            $stmtMad = $this->conexion->prepare($sqlMad);
+            $stmtMad->bind_param("sss", $data['NomMad'], $data['ApeMad'], $idInd);
+            $stmtMad->execute();
+            $stmtMad->close();
+
+            // Padre (Sex=1) - Verificar si existe primero, si no insertar
+            if (!empty($data['NomPad']) || !empty($data['ApePad'])) {
+                // Intentar update
+                $sqlPad = "UPDATE padres SET Nom=?, Ape=? WHERE IdInd=? AND Sex=1";
+                $stmtPad = $this->conexion->prepare($sqlPad);
+                $stmtPad->bind_param("sss", $data['NomPad'], $data['ApePad'], $idInd);
+                $stmtPad->execute();
+                if ($stmtPad->affected_rows === 0) {
+                    // Si no actualizó nada, quizás no existía, verificar e insertar
+                    $stmtPad->close();
+                    // Check simple
+                    $check = $this->conexion->query("SELECT 1 FROM padres WHERE IdInd='$idInd' AND Sex=1");
+                    if ($check->num_rows == 0) {
+                        $insPad = $this->conexion->prepare("INSERT INTO padres (IdInd, Nom, Ape, Sex) VALUES (?, ?, ?, 1)");
+                        $insPad->bind_param("sss", $idInd, $data['NomPad'], $data['ApePad']);
+                        $insPad->execute();
+                        $insPad->close();
+                    }
+                } else {
+                    $stmtPad->close();
+                }
+            }
+
+            // 5. Actualizar Padrinos (Por Sexo: 1=Padrino, 2=Madrina)
+            // Padrino
+            $sqlPadr1 = "UPDATE padrinos SET Nom=?, Ape=? WHERE IdInd=? AND Sex=1 AND TipCelPad=1";
+            $stmtP1 = $this->conexion->prepare($sqlPadr1);
+            $stmtP1->bind_param("sss", $data['Pad1Nom'], $data['Pad1Ape'], $idInd);
+            $stmtP1->execute();
+            $stmtP1->close();
+
+            // Madrina
+            $sqlPadr2 = "UPDATE padrinos SET Nom=?, Ape=? WHERE IdInd=? AND Sex=2 AND TipCelPad=1";
+            $stmtP2 = $this->conexion->prepare($sqlPadr2);
+            $stmtP2->bind_param("sss", $data['Pad2Nom'], $data['Pad2Ape'], $idInd);
+            $stmtP2->execute();
+            $stmtP2->close();
+
+            $this->conexion->commit();
+            return ['status' => 'ok', 'msg' => 'Registro actualizado correctamente.'];
+        } catch (Exception $e) {
+            $this->conexion->rollback();
+            return ['status' => 'error', 'msg' => 'Error al actualizar: ' . $e->getMessage()];
+        }
     }
 
     // 🔹 Obtener reporte completo de bautizados para Desplegar Server
@@ -569,13 +726,40 @@ class sacrejmodel
                     c.FechCel,
                     c.NumLib,
                     c.NumFol,
-                    c.Lugar as LugarCelebracion
+                    c.Lugar as LugarCelebracion,
+                    img.UrlArchivo,
+                    img.NombreDigitalizador
                 FROM celebracion c
                 INNER JOIN individuo_celebracion ic ON ic.IdCel = c.IdCel
                 INNER JOIN individuos i ON i.IdInd = ic.IdInd
+                LEFT JOIN ImgActas img ON ic.IdImgActa = img.IdImg
                 WHERE c.TipCel = 1
                 ORDER BY c.FechCel DESC";
 
+        return $this->conexion->query($sql);
+    }
+
+    // 🔹 Obtener reporte COMPLETO de bautizados para Excel
+    public function obtener_bautizos_completo()
+    {
+        $sql = "SELECT 
+                    c.IdCel, c.FechCel, c.NumLib, c.NumFol, c.Lugar AS LugarBautizo,
+                    i.IdInd, i.NomInd, i.ApeInd, i.FecNacInd, i.LugNacInd, i.SexInd, i.FilInd,
+                    ic.RegCiv, ic.NotMar,
+                    m.Nom AS MinNom, m.Ape AS MinApe,
+                    -- Concatenar Padres
+                    GROUP_CONCAT(DISTINCT CONCAT(pad.Nom, ' ', pad.Ape) SEPARATOR ' / ') AS Padres,
+                    -- Concatenar Padrinos
+                    GROUP_CONCAT(DISTINCT CONCAT(padr.Nom, ' ', padr.Ape) SEPARATOR ' / ') AS Padrinos
+                FROM celebracion c
+                INNER JOIN individuo_celebracion ic ON ic.IdCel = c.IdCel
+                INNER JOIN individuos i ON i.IdInd = ic.IdInd
+                LEFT JOIN ministro_celebrante m ON m.IdMinCel = c.IdMin
+                LEFT JOIN padres pad ON pad.IdInd = i.IdInd
+                LEFT JOIN padrinos padr ON padr.IdInd = i.IdInd
+                WHERE c.TipCel = 1
+                GROUP BY c.IdCel
+                ORDER BY c.FechCel DESC";
         return $this->conexion->query($sql);
     }
 
@@ -609,7 +793,9 @@ class sacrejmodel
                     GROUP_CONCAT(DISTINCT CONCAT(padr.Nom, ' ', padr.Ape) SEPARATOR ' y ') AS Padrinos,
 
                     m.Nom AS MinNom,
-                    m.Ape AS MinApe
+                    m.Ape AS MinApe,
+                    img.UrlArchivo,
+                    img.NombreDigitalizador
                 FROM celebracion c
                 INNER JOIN individuo_celebracion ic ON ic.IdCel = c.IdCel
                 INNER JOIN individuos i            ON i.IdInd = ic.IdInd
@@ -617,11 +803,12 @@ class sacrejmodel
                 LEFT JOIN padres pad               ON pad.IdInd = i.IdInd
                 LEFT JOIN padrinos padr            ON padr.IdInd = i.IdInd
                 LEFT JOIN ministro_celebrante m    ON m.IdMinCel = c.IdMin
+                LEFT JOIN ImgActas img             ON img.IdImg = ic.IdImgActa
                 WHERE c.IdCel = ?
                 GROUP BY 
                     c.IdCel, c.FechCel, c.NumLib, c.NumFol, c.Lugar, tc.DesTip,
                     i.IdInd, i.NomInd, i.ApeInd, i.FecNacInd, i.LugNacInd, i.FilInd,
-                    ic.RegCiv, ic.NotMar, m.Nom, m.Ape";
+                    ic.RegCiv, ic.NotMar, m.Nom, m.Ape, img.UrlArchivo, img.NombreDigitalizador";
 
         $stmt = $this->conexion->prepare($sql);
         $stmt->bind_param("i", $idCel);
@@ -650,6 +837,8 @@ class sacrejmodel
                 'padres'         => $row['Padres'],
                 'padrinos'       => $row['Padrinos'],
                 'ministro'       => trim($row['MinNom'] . ' ' . $row['MinApe']),
+                'imagen'         => $row['UrlArchivo'],
+                'digitalizador'  => $row['NombreDigitalizador']
             ];
         }
 

@@ -589,6 +589,101 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
         exit;
     }
 
+    public function validar_clave_exportacion()
+    {
+        header('Content-Type: application/json');
+        if (session_status() == PHP_SESSION_NONE) session_start();
+
+        if (!isset($_SESSION['IdUsu'])) {
+            echo json_encode(['success' => false, 'msg' => 'Sesión expirada.']);
+            exit;
+        }
+
+        $pass = $_POST['password'] ?? '';
+        $usuario = $_SESSION['Usuario'];
+
+        // Verificar usuario y contraseña usando el modelo existente
+        $user = $this->model->verificar_usuario($usuario, $pass);
+
+        echo json_encode(['success' => (bool)$user]);
+        exit;
+    }
+
+    public function descargar_reporte_bautizos_completo()
+    {
+        if (session_status() == PHP_SESSION_NONE) session_start();
+        
+        // Verificar sesión
+        if (!isset($_SESSION['IdUsu'])) {
+            header("Location: index.php");
+            exit;
+        }
+
+        $filename = "Reporte_Bautizos_Completo_" . date('Ymd_His') . ".xls";
+        
+        // Headers para forzar descarga como Excel
+        header("Content-Type: application/vnd.ms-excel; charset=utf-8");
+        header("Content-Disposition: attachment; filename=\"$filename\"");
+        header("Pragma: no-cache");
+        header("Expires: 0");
+
+        $datos = $this->model->obtener_bautizos_completo();
+
+        // Generar tabla HTML (Excel la interpreta)
+        echo "<meta charset='UTF-8'>";
+        echo "<table border='1'>";
+        echo "<thead>
+                <tr style='background-color: #f2f2f2;'>
+                    <th>N°</th>
+                    <th>Libro</th>
+                    <th>Folio</th>
+                    <th>Fecha Bautizo</th>
+                    <th>Lugar Bautizo</th>
+                    <th>Nombre</th>
+                    <th>Apellido</th>
+                    <th>Sexo</th>
+                    <th>Fecha Nac.</th>
+                    <th>Lugar Nac.</th>
+                    <th>Filiación</th>
+                    <th>Padres</th>
+                    <th>Padrinos</th>
+                    <th>Ministro</th>
+                    <th>Registro Civil</th>
+                    <th>Observaciones</th>
+                </tr>
+              </thead>";
+        echo "<tbody>";
+
+        if ($datos) {
+            while ($row = $datos->fetch_assoc()) {
+                $sexo = ($row['SexInd'] == 1) ? 'Masculino' : 'Femenino';
+                $filiaciones = ['0'=>'No reconocido', '1'=>'Reconocido', '2'=>'Legítimo', '3'=>'Natural', '4'=>'Ilegítimo'];
+                $fil = $filiaciones[$row['FilInd']] ?? $row['FilInd'];
+                
+                echo "<tr>";
+                echo "<td>" . $row['IdCel'] . "</td>";
+                echo "<td>" . $row['NumLib'] . "</td>";
+                echo "<td>" . $row['NumFol'] . "</td>";
+                echo "<td>" . date('d/m/Y', strtotime($row['FechCel'])) . "</td>";
+                echo "<td>" . $row['LugarBautizo'] . "</td>";
+                echo "<td>" . $row['NomInd'] . "</td>";
+                echo "<td>" . $row['ApeInd'] . "</td>";
+                echo "<td>" . $sexo . "</td>";
+                echo "<td>" . date('d/m/Y', strtotime($row['FecNacInd'])) . "</td>";
+                echo "<td>" . $row['LugNacInd'] . "</td>";
+                echo "<td>" . $fil . "</td>";
+                echo "<td>" . $row['Padres'] . "</td>";
+                echo "<td>" . $row['Padrinos'] . "</td>";
+                echo "<td>" . $row['MinNom'] . ' ' . $row['MinApe'] . "</td>";
+                echo "<td>" . $row['RegCiv'] . "</td>";
+                echo "<td>" . $row['NotMar'] . "</td>";
+                echo "</tr>";
+            }
+        }
+        echo "</tbody></table>";
+        exit;
+    }
+
     /* ============================================================
        📥 RECEPCIÓN TEMPORAL DE BAUTIZOS (DESDE MÓVIL)
        ============================================================ */
@@ -701,6 +796,127 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
         } else {
             echo json_encode(['status' => 'error', 'msg' => 'Error al actualizar.']);
         }
+        exit;
+    }
+
+    // 🔹 Función auxiliar para procesar un array de datos y guardarlo en BD
+    private function _procesar_datos_bautizo($data) {
+        
+        $individuo = [
+            'IdInd'     => $data['IdInd'] ?? '',
+            'NomInd'    => $data['NomInd'] ?? '',
+            'ApeInd'    => $data['ApeInd'] ?? '',
+            'SexInd'    => $data['SexInd'] ?? '',
+            'FecNacInd' => $data['FecNacInd'] ?? '',
+            'LugNacInd' => $data['LugNacInd'] ?? '',
+            'FilInd'    => $data['FilInd'] ?? '',
+            'IdUsu'     => $_SESSION['IdUsu'] ?? 1
+        ];
+
+        $madre = ['Nom' => $data['NomMad'] ?? '', 'Ape' => $data['ApeMad'] ?? '', 'Sex' => 2];
+        
+        $padre = null;
+        if (!empty($data['NomPad']) || !empty($data['ApePad'])) {
+            $padre = ['Nom' => $data['NomPad'], 'Ape' => $data['ApePad'], 'Sex' => 1];
+        }
+
+        $padrinos = [
+            ['Nom' => $data['Pad1Nom'], 'Ape' => $data['Pad1Ape'], 'Sex' => $data['Pad1Sex']],
+            ['Nom' => $data['Pad2Nom'], 'Ape' => $data['Pad2Ape'], 'Sex' => $data['Pad2Sex']]
+        ];
+
+        $celebracion = [
+            'IdCel'   => $data['IdCel'],
+            'FechCel' => $data['FechCel'],
+            'TipCel'  => $data['TipCel'] ?? 1,
+            'NumLib'  => $data['NumLib'],
+            'NumFol'  => $data['NumFol'],
+            'IdMin'   => $data['IdMin'],
+            'Lugar'   => $data['Lugar']
+        ];
+
+        $enlace = [
+            'RegCiv'    => $data['RegCiv'] ?? '',
+            'NotMar'    => $data['NotMar'] ?? '',
+            'TipCelPad' => $celebracion['TipCel']
+        ];
+
+        // Datos de la imagen
+        $datosImagen = null;
+        if (!empty($data['RutaImagen'])) {
+            $datosImagen = [
+                'UrlArchivo' => $data['RutaImagen'],
+                'NombreDigitalizador' => $data['usuario_envio'] ?? 'Desconocido'
+            ];
+        }
+
+        // Validar existencia previa
+        if ($this->model->verificar_existencia_individuo($individuo['IdInd'])) {
+            throw new Exception("El ID {$individuo['IdInd']} ya existe.");
+        }
+
+        return $this->model->registrar_bautizo_completo(
+            $individuo, $madre, $padre, $padrinos, $celebracion, $enlace, $datosImagen
+        );
+    }
+
+    public function api_aprobar_bautizo_temporal()
+    {
+        header('Content-Type: application/json');
+        $index = $_POST['index'] ?? null;
+        $archivo = 'pending_bautizos.json';
+        
+        if ($index === null || !file_exists($archivo)) {
+            echo json_encode(['status' => 'error', 'msg' => 'Datos no válidos.']);
+            exit;
+        }
+
+        $pendientes = json_decode(file_get_contents($archivo), true) ?? [];
+        if (!isset($pendientes[$index])) {
+            echo json_encode(['status' => 'error', 'msg' => 'Registro no encontrado.']);
+            exit;
+        }
+
+        try {
+            $res = $this->_procesar_datos_bautizo($pendientes[$index]);
+            if ($res['status'] === 'ok') {
+                // Eliminar del JSON si se guardó en BD
+                array_splice($pendientes, $index, 1);
+                file_put_contents($archivo, json_encode($pendientes));
+            }
+            echo json_encode($res);
+        } catch (Exception $e) {
+            echo json_encode(['status' => 'error', 'msg' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    public function api_aprobar_todos_bautizos_temporales()
+    {
+        header('Content-Type: application/json');
+        $archivo = 'pending_bautizos.json';
+        $pendientes = file_exists($archivo) ? json_decode(file_get_contents($archivo), true) : [];
+        $guardados = 0;
+        $errores = 0;
+        $nuevosPendientes = [];
+
+        foreach ($pendientes as $p) {
+            try {
+                $res = $this->_procesar_datos_bautizo($p);
+                if ($res['status'] === 'ok') {
+                    $guardados++;
+                } else {
+                    $nuevosPendientes[] = $p; // Mantener si falló (ej. ID duplicado)
+                    $errores++;
+                }
+            } catch (Exception $e) {
+                $nuevosPendientes[] = $p;
+                $errores++;
+            }
+        }
+
+        file_put_contents($archivo, json_encode($nuevosPendientes));
+        echo json_encode(['status' => 'ok', 'guardados' => $guardados, 'errores' => $errores]);
         exit;
     }
 
@@ -992,6 +1208,19 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
         exit;
     }
 
+    public function api_obtener_ministros() 
+    {
+        header('Content-Type: application/json');
+        $res = $this->model->obtener_todos("ministro_celebrante");
+        $ministros = [];
+        if ($res) {
+            while ($row = $res->fetch_assoc()) {
+                $ministros[] = $row;
+            }
+        }
+        echo json_encode($ministros);
+        exit;
+    }
 
     /* ============================================================
        📜 REGISTRO DE JERARQUÍAS
@@ -1143,6 +1372,45 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
             'success' => true,
             'message' => 'Usuario eliminado correctamente.'
         ]);
+    }
+
+    /* ============================================================
+       ✏️ EDICIÓN DE BAUTIZOS
+       ============================================================ */
+
+    public function api_obtener_bautizo_edicion()
+    {
+        error_reporting(0); // 🛡️ Evitar que warnings de PHP rompan el JSON
+        if (ob_get_length()) ob_clean(); // Limpiar buffer para evitar basura en el JSON
+        header('Content-Type: application/json');
+        
+        try {
+            $idCel = $_POST['idCel'] ?? 0;
+            if (!$idCel) {
+                throw new Exception('ID no válido');
+            }
+            $data = $this->model->obtener_datos_bautizo_por_id($idCel);
+            
+            echo json_encode($data ? ['status' => 'ok', 'data' => $data] : ['status' => 'error', 'msg' => 'Registro no encontrado']);
+        } catch (Throwable $e) {
+            echo json_encode(['status' => 'error', 'msg' => 'Error del servidor: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    public function api_guardar_edicion_bautizo()
+    {
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+        try {
+            if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+                $res = $this->model->actualizar_bautizo($_POST);
+                echo json_encode($res);
+            }
+        } catch (Throwable $e) {
+            echo json_encode(['status' => 'error', 'msg' => 'Error: ' . $e->getMessage()]);
+        }
+        exit;
     }
 
     /* ============================================================
