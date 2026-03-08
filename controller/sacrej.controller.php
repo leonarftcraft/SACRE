@@ -83,6 +83,12 @@ class SacrejController
         require_once "view/layout.php";
     }
 
+    public function vista_respaldo()
+    {
+        $contenido = "view/respaldo.php";
+        require_once "view/layout.php";
+    }
+
     public function vista_celebraciones()
     {
         $contenido = "view/celebraciones.php";
@@ -342,8 +348,10 @@ class SacrejController
     // 💓 NUEVA FUNCIÓN: Recibe el latido del cliente
     public function api_heartbeat()
     {
+        session_write_close(); // 🚀 Liberar sesión para no bloquear otros procesos
         header('Content-Type: application/json');
         $nombre = $_POST['nombre'] ?? '';
+        $conectado = false;
 
         if (!empty($nombre)) {
             $archivo = 'connected_clients.json';
@@ -358,14 +366,18 @@ class SacrejController
                 $clientes = $temp;
             }
 
-            // Actualizar la hora de "última vez visto"
-            $clientes[$nombre] = time();
-            file_put_contents($archivo, json_encode($clientes));
+            // Actualizar la hora de "última vez visto" SOLO si ya existe en la lista
+            // Esto permite que si el admin lo borra, el cliente se entere y se desconecte
+            if (isset($clientes[$nombre])) {
+                $clientes[$nombre] = time();
+                file_put_contents($archivo, json_encode($clientes));
+                $conectado = true;
+            }
         }
 
         // Devolvemos el estado del server para que el móvil sepa si debe salir
         $estado = file_exists('server_status.txt') ? trim(file_get_contents('server_status.txt')) : '0';
-        echo json_encode(['estado' => $estado]);
+        echo json_encode(['estado' => $estado, 'conectado' => $conectado]);
         exit;
     }
 
@@ -386,7 +398,7 @@ class SacrejController
         // 🧹 LIMPIEZA AUTOMÁTICA
         // Si un cliente no ha dado señal en 5 segundos, lo borramos
         $ahora = time();
-        $limite = 5; // segundos de tolerancia
+        $limite = 30; // segundos de tolerancia (aumentado para evitar desconexiones durante cargas lentas)
         $cambios = false;
 
         foreach ($clientes as $nombre => $ultimoVisto) {
@@ -407,6 +419,10 @@ class SacrejController
 
     public function api_procesar_imagen()
     {
+        // 🛑 IMPORTANTE: Cerrar sesión para liberar el archivo y permitir que
+        // el heartbeat (latido) siga funcionando mientras se procesa la imagen.
+        session_write_close();
+
         if (ob_get_length()) ob_clean(); // 🔹 Limpiar buffer para evitar JSON corrupto
         header('Content-Type: application/json');
 
@@ -1270,6 +1286,182 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
     echo json_encode($resultado);
     exit;
 }
+
+    /* ============================================================
+       💾 RESPALDO Y COPIAS DE SEGURIDAD
+       ============================================================ */
+
+    public function descargar_backup_imagenes()
+    {
+        // Verificar sesión y permisos (solo admin)
+        if (session_status() == PHP_SESSION_NONE) session_start();
+        if (!isset($_SESSION['RolUsu']) || ($_SESSION['RolUsu'] != 10 && $_SESSION['RolUsu'] != 100)) {
+            die("Acceso denegado.");
+        }
+
+        // 🛡️ Validación: Verificar si la extensión ZIP está habilitada
+        if (!class_exists('ZipArchive')) {
+            die("Error crítico: La extensión <b>php_zip</b> no está habilitada en el servidor. <br>Por favor, edite el archivo <i>php.ini</i>, descomente la línea <code>extension=zip</code> y reinicie Apache.");
+        }
+
+        // Ruta de la carpeta de imágenes (relativa al index.php)
+        $source = 'view/images/actas';
+        
+        if (!file_exists($source)) {
+            die("La carpeta de imágenes no existe o está vacía.");
+        }
+
+        // 🔹 Obtener nombre personalizado o usar default
+        $customName = isset($_GET['name']) ? preg_replace('/[^a-zA-Z0-9_-]/', '_', $_GET['name']) : 'respaldo_sacrej';
+        $zipName = $customName . '_' . date('Ymd_His') . '.zip';
+        $zipPath = sys_get_temp_dir() . '/' . $zipName;
+        
+        // 1. Generar SQL temporal
+        $sqlName = 'base_datos.sql'; // Nombre fijo dentro del ZIP para facilitar la restauración
+        $sqlPath = sys_get_temp_dir() . '/' . $sqlName;
+        $this->model->generar_backup_sql($sqlPath);
+
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
+            
+            // 2. Agregar SQL al ZIP
+            if (file_exists($sqlPath)) {
+                $zip->addFile($sqlPath, 'base_datos/' . $sqlName);
+            }
+
+            // 3. Agregar Imágenes al ZIP
+            $files = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::LEAVES_ONLY
+            );
+
+            foreach ($files as $name => $file) {
+                if (!$file->isDir()) {
+                    $filePath = $file->getRealPath();
+                    // Ruta relativa dentro del ZIP (carpeta imagenes/)
+                    $relativePath = 'imagenes/' . substr($filePath, strlen(realpath($source)) + 1);
+                    $zip->addFile($filePath, $relativePath);
+                }
+            }
+            $zip->close();
+            
+            // Borrar SQL temporal
+            if (file_exists($sqlPath)) unlink($sqlPath);
+        } else {
+            die("Error al crear el archivo ZIP. Verifique que la extensión ZipArchive esté habilitada en PHP.");
+        }
+
+        // Forzar descarga
+        if (file_exists($zipPath)) {
+            header('Content-Type: application/zip');
+            header('Content-Disposition: attachment; filename="' . $zipName . '"');
+            header('Content-Length: ' . filesize($zipPath));
+            header('Pragma: no-cache');
+            readfile($zipPath);
+            unlink($zipPath); // Borrar temporal
+            exit;
+        } else {
+            die("Error al generar la descarga.");
+        }
+    }
+
+    public function api_obtener_tamano_respaldo()
+    {
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+        
+        // 1. Calcular tamaño de imágenes
+        $source = 'view/images/actas';
+        $size = 0;
+        if (file_exists($source)) {
+            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS));
+            foreach ($iterator as $file) {
+                $size += $file->getSize();
+            }
+        }
+
+        // 2. Calcular tamaño BD
+        $sqlSize = $this->model->obtener_tamano_bd();
+        
+        $total = $size + $sqlSize;
+        
+        // Formatear a MB/GB
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $power = $total > 0 ? floor(log($total, 1024)) : 0;
+        $formatted = number_format($total / pow(1024, $power), 2, '.', ',') . ' ' . $units[$power];
+
+        echo json_encode(['status' => 'ok', 'size' => $formatted]);
+        exit;
+    }
+
+    public function api_generar_respaldo_local()
+    {
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+
+        // Validar permisos (Admin)
+        if (session_status() == PHP_SESSION_NONE) session_start();
+        if (!isset($_SESSION['RolUsu']) || ($_SESSION['RolUsu'] != 10 && $_SESSION['RolUsu'] != 100)) {
+            echo json_encode(['status' => 'error', 'msg' => 'Acceso denegado.']);
+            exit;
+        }
+
+        $nombre = $_POST['nombre'] ?? 'respaldo';
+        $rutaDestino = $_POST['ruta'] ?? '';
+
+        // Normalizar ruta (Windows usa \, pero PHP maneja / bien)
+        $rutaDestino = rtrim(str_replace('\\', '/', $rutaDestino), '/');
+
+        // Validar o crear carpeta
+        if (!is_dir($rutaDestino)) {
+            if (!mkdir($rutaDestino, 0777, true)) {
+                echo json_encode(['status' => 'error', 'msg' => "La ruta '$rutaDestino' no existe y no se pudo crear."]);
+                exit;
+            }
+        }
+
+        // Generar ZIP en temporal primero
+        $zipName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $nombre) . '.zip';
+        $zipPathTemp = sys_get_temp_dir() . '/' . $zipName;
+        $source = 'view/images/actas';
+
+        // 1. Generar SQL
+        $sqlName = 'base_datos.sql';
+        $sqlPath = sys_get_temp_dir() . '/' . $sqlName;
+        $this->model->generar_backup_sql($sqlPath);
+
+        $zip = new ZipArchive();
+        if ($zip->open($zipPathTemp, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
+            if (file_exists($sqlPath)) $zip->addFile($sqlPath, 'base_datos/' . $sqlName);
+            
+            if (file_exists($source)) {
+                $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS), RecursiveIteratorIterator::LEAVES_ONLY);
+                foreach ($files as $name => $file) {
+                    if (!$file->isDir()) {
+                        $filePath = $file->getRealPath();
+                        $relativePath = 'imagenes/' . substr($filePath, strlen(realpath($source)) + 1);
+                        $zip->addFile($filePath, $relativePath);
+                    }
+                }
+            }
+            $zip->close();
+            if (file_exists($sqlPath)) unlink($sqlPath);
+        } else {
+            echo json_encode(['status' => 'error', 'msg' => 'Error al crear el ZIP.']);
+            exit;
+        }
+
+        // Mover a destino final
+        $destinoFinal = $rutaDestino . '/' . $zipName;
+        if (copy($zipPathTemp, $destinoFinal)) {
+            unlink($zipPathTemp);
+            echo json_encode(['status' => 'ok', 'msg' => "Respaldo guardado exitosamente en:<br><b>$destinoFinal</b>"]);
+        } else {
+            unlink($zipPathTemp);
+            echo json_encode(['status' => 'error', 'msg' => 'Error al guardar el archivo en la ruta destino. Verifique permisos.']);
+        }
+        exit;
+    }
 
     /* ============================================================
        👥 GESTIÓN DE USUARIOS (activar / desactivar / eliminar)

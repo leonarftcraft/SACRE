@@ -900,6 +900,8 @@
             $.post('?controller=sacrej&action=api_heartbeat', { nombre: usuarioActual }, function(res) {
                 if (res.estado !== '1') {
                     salirDelSistema('El servidor ha sido desactivado por el administrador.');
+                } else if (res.conectado === false) {
+                    salirDelSistema('Has sido desconectado por el administrador.');
                 }
             }, 'json');
         }, 2000);

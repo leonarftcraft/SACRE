@@ -397,7 +397,14 @@ function actualizarClientes() {
         let html = '';
         if (clientes && clientes.length > 0) {
             clientes.forEach(c => {
-                html += `<tr><td>🟢 ${c}</td></tr>`;
+                html += `<tr>
+                    <td class="d-flex justify-content-between align-items-center">
+                        <span>🟢 ${c}</span>
+                        <button class="btn btn-sm btn-outline-danger" onclick="desconectarCliente('${c}')" title="Desconectar">
+                            ❌
+                        </button>
+                    </td>
+                </tr>`;
             });
         } else {
             html = '<tr><td class="text-muted text-center">Esperando conexiones...</td></tr>';
@@ -409,6 +416,25 @@ function actualizarClientes() {
 // Actualizar cada 2 segundos
 setInterval(actualizarClientes, 2000);
 actualizarClientes(); // Primera carga inmediata
+
+function desconectarCliente(nombre) {
+    Swal.fire({
+        title: '¿Desconectar cliente?',
+        text: `Se desconectará a ${nombre} del servidor.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, desconectar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            $.post('?controller=sacrej&action=api_desconectar_cliente', { nombre: nombre }, function(res) {
+                if (res.success) {
+                    actualizarClientes();
+                }
+            }, 'json');
+        }
+    });
+}
 
 // 🔹 Lógica para actualizar Bautizos Pendientes (Polling)
 let datosPendientes = [];

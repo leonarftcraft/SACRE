@@ -88,6 +88,7 @@ $rolNombre = $roles[$rolId] ?? 'Invitado';
           <ul class="dropdown-menu" aria-labelledby="configDropdown">
             <li><a class="dropdown-item" href="?controller=sacrej&action=vista_usuarios">Usuarios</a></li>
             <li><a class="dropdown-item" href="?controller=sacrej&action=vista_administrar_api">Administrar API Key Gemini</a></li>
+            <li><a class="dropdown-item" href="?controller=sacrej&action=vista_respaldo">Respaldo</a></li>
           </ul>
         </li>
         <?php endif; ?>

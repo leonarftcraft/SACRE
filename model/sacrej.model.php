@@ -963,6 +963,58 @@ class sacrejmodel
         return $this->conexion->query($sql);
     }
 
+    // 🔹 Obtener tamaño aproximado de la base de datos (Data + Indices)
+    public function obtener_tamano_bd()
+    {
+        $sql = "SHOW TABLE STATUS";
+        $res = $this->conexion->query($sql);
+        $size = 0;
+        if ($res) {
+            while ($row = $res->fetch_assoc()) {
+                $size += (int)$row["Data_length"] + (int)$row["Index_length"];
+            }
+        }
+        return $size;
+    }
+
+    // 🔹 Generar archivo SQL de respaldo (Dump)
+    public function generar_backup_sql($outputFile)
+    {
+        $sql = "SET FOREIGN_KEY_CHECKS=0;\n\n";
+        
+        // Obtener todas las tablas
+        $tables = [];
+        $result = $this->conexion->query("SHOW TABLES");
+        while ($row = $result->fetch_row()) {
+            $tables[] = $row[0];
+        }
+
+        foreach ($tables as $table) {
+            // 1. Estructura de la tabla
+            $row2 = $this->conexion->query("SHOW CREATE TABLE $table")->fetch_row();
+            $sql .= "DROP TABLE IF EXISTS `$table`;\n";
+            $sql .= "\n\n" . $row2[1] . ";\n\n";
+
+            // 2. Datos de la tabla
+            $result = $this->conexion->query("SELECT * FROM $table");
+            while ($row = $result->fetch_row()) {
+                $sql .= "INSERT INTO $table VALUES(";
+                for ($j = 0; $j < count($row); $j++) {
+                    if ($j > 0) $sql .= ",";
+                    if ($row[$j] === null) {
+                        $sql .= "NULL";
+                    } else {
+                        $sql .= "'" . $this->conexion->real_escape_string($row[$j]) . "'";
+                    }
+                }
+                $sql .= ");\n";
+            }
+        }
+        
+        $sql .= "\nSET FOREIGN_KEY_CHECKS=1;";
+        return file_put_contents($outputFile, $sql);
+    }
+
     /**
      * 🛠️ Método de Instalación Automática de la Base de Datos
      * Se ejecuta si la base de datos principal no existe.
