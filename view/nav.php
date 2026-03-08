@@ -77,6 +77,15 @@ $rolNombre = $roles[$rolId] ?? 'Invitado';
             <li><a class="dropdown-item" href="?controller=sacrej&action=vista_ministros">Ministros</a></li>
             <li><a class="dropdown-item" href="?controller=sacrej&action=vista_jerarquias">Jerarquías</a></li>
             <li><a class="dropdown-item" href="index.php?controller=sacrej&action=vista_celebraciones">Celebraciones</a></li>
+          </ul>
+        </li>
+
+        <!-- 🔹 Dropdown Configuraciones (solo admin) -->
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" id="configDropdown" data-bs-toggle="dropdown">
+            Configuraciones
+          </a>
+          <ul class="dropdown-menu" aria-labelledby="configDropdown">
             <li><a class="dropdown-item" href="?controller=sacrej&action=vista_usuarios">Usuarios</a></li>
             <li><a class="dropdown-item" href="?controller=sacrej&action=vista_administrar_api">Administrar API Key Gemini</a></li>
           </ul>
