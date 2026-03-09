@@ -3,19 +3,30 @@
   <h4 class="text-center mb-4">Registro de Bautizos</h4>
 
   <form id="formBautizo" onsubmit="return false;">
+
+    <!-- 📘 Estatus del Acta -->
+    <div class="mb-3">
+      <label class="form-label">Estatus del Acta</label>
+      <select id="EstCel" name="EstCel" class="form-select" required>
+        <option value="1" selected>Estandar</option>
+        <option value="2">Caso Especial</option>
+        <option value="0">Nulo</option>
+      </select>
+    </div>
+
     <!-- 🟦 Encabezado -->
     <div class="row g-3">
       <div class="col-md-4">
         <label class="form-label">Código de Celebración</label>
-        <input type="number" id="IdCel" name="IdCel" class="form-control" min="1" required>
+        <input type="number" id="IdCel" name="IdCel" class="form-control" min="1" required data-was-required="true">
       </div>
       <div class="col-md-4">
         <label class="form-label">Libro N°</label>
-        <input type="number" id="NumLib" name="NumLib" class="form-control" required>
+        <input type="number" id="NumLib" name="NumLib" class="form-control" required data-was-required="true">
       </div>
       <div class="col-md-4">
         <label class="form-label">Folio N°</label>
-        <input type="number" id="NumFol" name="NumFol" class="form-control" required>
+        <input type="number" id="NumFol" name="NumFol" class="form-control" required data-was-required="true">
       </div>
     </div>
 
@@ -23,7 +34,7 @@
     <div class="row g-3 mt-3">
       <div class="col-md-6">
         <label class="form-label">Tipo de Celebración</label>
-        <select id="TipCel" name="TipCel" class="form-select" required>
+        <select id="TipCel" name="TipCel" class="form-select" required data-was-required="true">
           <option value="">Seleccione...</option>
           <?php
           if (isset($this) && property_exists($this, 'model')) {
@@ -41,15 +52,15 @@
     <div class="row g-3 mt-3">
       <div class="col-md-4">
         <label class="form-label">Nombre(s) del Bautizado</label>
-        <input type="text" id="NomInd" name="NomInd" class="form-control" required>
+        <input type="text" id="NomInd" name="NomInd" class="form-control" required data-was-required="true">
       </div>
       <div class="col-md-4">
         <label class="form-label">Apellido(s)</label>
-        <input type="text" id="ApeInd" name="ApeInd" class="form-control" required>
+        <input type="text" id="ApeInd" name="ApeInd" class="form-control" required data-was-required="true">
       </div>
       <div class="col-md-4">
         <label class="form-label">Sexo</label>
-        <select id="SexInd" name="SexInd" class="form-select" required>
+        <select id="SexInd" name="SexInd" class="form-select" required data-was-required="true">
           <option value="">Seleccione…</option>
           <option value="1">Masculino</option>
           <option value="2">Femenino</option>
@@ -66,11 +77,11 @@
       <div class="row g-3 mt-1">
         <div class="col-md-6">
           <label class="form-label">Nombre</label>
-          <input type="text" id="NomMad" name="NomMad" class="form-control" required>
+          <input type="text" id="NomMad" name="NomMad" class="form-control" required data-was-required="true">
         </div>
         <div class="col-md-6">
           <label class="form-label">Apellido</label>
-          <input type="text" id="ApeMad" name="ApeMad" class="form-control" required>
+          <input type="text" id="ApeMad" name="ApeMad" class="form-control" required data-was-required="true">
         </div>
       </div>
     </div>
@@ -94,7 +105,7 @@
     <div class="row g-3 mt-3">
       <div class="col-md-3">
         <label class="form-label">Filiación</label>
-        <select id="FilInd" name="FilInd" class="form-select" required>
+        <select id="FilInd" name="FilInd" class="form-select" required data-was-required="true">
           <option value="">Seleccione…</option>
           <option value="1">Reconocido</option>
           <option value="2">Legítimo</option>
@@ -103,11 +114,11 @@
       </div>
       <div class="col-md-5">
         <label class="form-label">Lugar de nacimiento</label>
-        <input type="text" id="LugNacInd" name="LugNacInd" class="form-control" required>
+        <input type="text" id="LugNacInd" name="LugNacInd" class="form-control" required data-was-required="true">
       </div>
       <div class="col-md-4">
         <label class="form-label">Fecha de nacimiento</label>
-        <input type="date" id="FecNacInd" name="FecNacInd" class="form-control" required>
+        <input type="date" id="FecNacInd" name="FecNacInd" class="form-control" required data-was-required="true">
       </div>
     </div>
 
@@ -115,15 +126,15 @@
     <div class="row g-3 mt-3">
       <div class="col-md-3">
         <label class="form-label">Fecha del Bautizo</label>
-        <input type="date" id="FechCel" name="FechCel" class="form-control" required>
+        <input type="date" id="FechCel" name="FechCel" class="form-control" required data-was-required="true">
       </div>
       <div class="col-md-4">
         <label class="form-label">Lugar de la Celebración</label>
-        <input type="text" id="Lugar" name="Lugar" class="form-control" required>
+        <input type="text" id="Lugar" name="Lugar" class="form-control" required data-was-required="true">
       </div>
       <div class="col-md-5">
         <label class="form-label">Ministro Celebrante</label>
-        <select id="IdMin" name="IdMin" class="form-select" required>
+        <select id="IdMin" name="IdMin" class="form-select" required data-was-required="true">
           <option value="">Seleccione…</option>
           <?php
           if (isset($this) && property_exists($this, 'model')) {
@@ -143,11 +154,11 @@
 
       <div class="col-md-4">
         <label class="form-label">Nombre </label>
-        <input type="text" id="Pad1Nom" name="Pad1Nom" class="form-control" required>
+        <input type="text" id="Pad1Nom" name="Pad1Nom" class="form-control" required data-was-required="true">
       </div>
       <div class="col-md-4">
         <label class="form-label">Apellido</label>
-        <input type="text" id="Pad1Ape" name="Pad1Ape" class="form-control" required>
+        <input type="text" id="Pad1Ape" name="Pad1Ape" class="form-control" required data-was-required="true">
       </div>
       <!-- Sexo enviado oculto: 1 = Masculino (padrino) -->
       <input type="hidden" id="Pad1Sex" name="Pad1Sex" value="1">
@@ -156,11 +167,11 @@
 
       <div class="col-md-4">
         <label class="form-label">Nombre</label>
-        <input type="text" id="Pad2Nom" name="Pad2Nom" class="form-control" required>
+        <input type="text" id="Pad2Nom" name="Pad2Nom" class="form-control" required data-was-required="true">
       </div>
       <div class="col-md-4">
         <label class="form-label">Apellido</label>
-        <input type="text" id="Pad2Ape" name="Pad2Ape" class="form-control" required>
+        <input type="text" id="Pad2Ape" name="Pad2Ape" class="form-control" required data-was-required="true">
       </div>
       <!-- Sexo enviado oculto: 2 = Femenino (madrina) -->
       <input type="hidden" id="Pad2Sex" name="Pad2Sex" value="2">
@@ -198,6 +209,21 @@
 
     whenReady(() => {
       console.log("✅ jQuery detectado, activando scripts...");
+
+      // --- Lógica para validación por Estatus ---
+      const form = $('#formBautizo');
+      const estatusSelect = $('#EstCel');
+
+      estatusSelect.on('change', function() {
+          const estatus = $(this).val();
+          const isStandard = (estatus == '1');
+
+          form.find('[data-was-required="true"]').each(function() {
+              $(this).prop('required', isStandard);
+          });
+      }).trigger('change'); // Disparar al cargar para establecer el estado inicial
+
+      // --- Fin de la lógica de Estatus ---
 
       const endpoint = "index.php?controller=sacrej&action=agregar_bautizo";
 
@@ -361,21 +387,20 @@
 
       $("#btnGuardarBautizo").off("click").on("click", function () {
         const $btn = $(this);
+        const form = document.getElementById('formBautizo');
 
         // 🧩 Antirrebote: evitar doble clic
         if ($btn.data("sending")) return;
         $btn.data("sending", true);
 
-        // Validar ID generado
-        const id = $("#IdInd").val();
-        if (!id) {
-          notify(
-            "warning",
-            "Falta información",
-            "No se generó el ID del bautizado. Verifique nombre, apellido y fecha de nacimiento."
-          );
-          $btn.data("sending", false);
-          return;
+        // 🔹 Nueva validación HTML5
+        // El manejador de estatus ya quita/pone 'required', así que esto funciona dinámicamente.
+        if (!form.checkValidity()) {
+            // Forzar la visualización de los mensajes de validación del navegador
+            form.reportValidity(); 
+            notify("warning", "Campos incompletos", "Por favor, complete todos los campos obligatorios.");
+            $btn.data("sending", false);
+            return;
         }
 
         // Validar fechas

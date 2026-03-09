@@ -85,8 +85,8 @@ $jerarquias = $this->model->obtener_todos("jerarquia_ministro");
             $fecNacRaw = $fila['FecNacInd'] ?? '';
             $fecBautRaw = $fila['FechCel'] ?? '';
 
-            $fecNac  = !empty($fecNacRaw) ? date("d/m/Y", strtotime($fecNacRaw)) : "";
-            $fecBaut = !empty($fecBautRaw)   ? date("d/m/Y", strtotime($fecBautRaw))   : "";
+            $fecNac  = (!empty($fecNacRaw) && $fecNacRaw !== '0000-00-00') ? date("d/m/Y", strtotime($fecNacRaw)) : "";
+            $fecBaut = (!empty($fecBautRaw) && $fecBautRaw !== '0000-00-00') ? date("d/m/Y", strtotime($fecBautRaw))   : "";
             
             $sexoCode = $fila['SexInd'] ?? '';
             $sexoTexto = ($sexoCode == 1) ? 'Masculino' : (($sexoCode == 2) ? 'Femenino' : 'Otro');
@@ -281,17 +281,27 @@ $jerarquias = $this->model->obtener_todos("jerarquia_ministro");
             <input type="hidden" name="IdCel" id="editIdCel">
             <input type="hidden" name="IdInd" id="editIdInd">
 
+            <!-- Estatus -->
+            <div class="mb-3">
+                <label class="form-label fw-bold">Estatus del Acta</label>
+                <select name="EstCel" id="editEstCel" class="form-select form-select-sm">
+                    <option value="1">Estandar</option>
+                    <option value="2">Caso Especial</option>
+                    <option value="0">Nulo</option>
+                </select>
+            </div>
+
             <!-- Datos Celebración -->
             <h6 class="text-primary border-bottom pb-1">Datos de la Celebración</h6>
             <div class="row g-2 mb-3">
-                <div class="col-md-3"><label class="small fw-bold">Libro</label><input type="number" name="NumLib" id="editNumLib" class="form-control form-control-sm"></div>
-                <div class="col-md-3"><label class="small fw-bold">Folio</label><input type="number" name="NumFol" id="editNumFol" class="form-control form-control-sm"></div>
-                <div class="col-md-3"><label class="small fw-bold">Fecha Bautizo</label><input type="date" name="FechCel" id="editFechCel" class="form-control form-control-sm"></div>
-                <div class="col-md-3"><label class="small fw-bold">Lugar</label><input type="text" name="Lugar" id="editLugar" class="form-control form-control-sm"></div>
+                <div class="col-md-3"><label class="small fw-bold">Libro</label><input type="number" name="NumLib" id="editNumLib" class="form-control form-control-sm" required data-was-required="true"></div>
+                <div class="col-md-3"><label class="small fw-bold">Folio</label><input type="number" name="NumFol" id="editNumFol" class="form-control form-control-sm" required data-was-required="true"></div>
+                <div class="col-md-3"><label class="small fw-bold">Fecha Bautizo</label><input type="date" name="FechCel" id="editFechCel" class="form-control form-control-sm" required data-was-required="true"></div>
+                <div class="col-md-3"><label class="small fw-bold">Lugar</label><input type="text" name="Lugar" id="editLugar" class="form-control form-control-sm" required data-was-required="true"></div>
                 <div class="col-md-6">
                     <label class="small fw-bold">Ministro</label>
                     <div class="input-group input-group-sm">
-                        <select name="IdMin" id="editIdMin" class="form-select">
+                        <select name="IdMin" id="editIdMin" class="form-select" required data-was-required="true">
                             <option value="">Seleccione...</option>
                             <?php 
                             // Usamos la lista de ministros celebrantes (tabla ministro_celebrante)
@@ -311,19 +321,19 @@ $jerarquias = $this->model->obtener_todos("jerarquia_ministro");
             <!-- Datos Bautizado -->
             <h6 class="text-primary border-bottom pb-1">Datos del Bautizado</h6>
             <div class="row g-2 mb-3">
-                <div class="col-md-6"><label class="small fw-bold">Nombre</label><input type="text" name="NomInd" id="editNomInd" class="form-control form-control-sm"></div>
-                <div class="col-md-6"><label class="small fw-bold">Apellido</label><input type="text" name="ApeInd" id="editApeInd" class="form-control form-control-sm"></div>
-                <div class="col-md-3"><label class="small fw-bold">Fecha Nac.</label><input type="date" name="FecNacInd" id="editFecNacInd" class="form-control form-control-sm"></div>
-                <div class="col-md-3"><label class="small fw-bold">Lugar Nac.</label><input type="text" name="LugNacInd" id="editLugNacInd" class="form-control form-control-sm"></div>
-                <div class="col-md-3"><label class="small fw-bold">Sexo</label><select name="SexInd" id="editSexInd" class="form-select form-select-sm"><option value="1">Masculino</option><option value="2">Femenino</option></select></div>
-                <div class="col-md-3"><label class="small fw-bold">Filiación</label><select name="FilInd" id="editFilInd" class="form-select form-select-sm"><option value="1">Reconocido</option><option value="2">Legítimo</option><option value="3">Natural</option></select></div>
+                <div class="col-md-6"><label class="small fw-bold">Nombre</label><input type="text" name="NomInd" id="editNomInd" class="form-control form-control-sm" required data-was-required="true"></div>
+                <div class="col-md-6"><label class="small fw-bold">Apellido</label><input type="text" name="ApeInd" id="editApeInd" class="form-control form-control-sm" required data-was-required="true"></div>
+                <div class="col-md-3"><label class="small fw-bold">Fecha Nac.</label><input type="date" name="FecNacInd" id="editFecNacInd" class="form-control form-control-sm" required data-was-required="true"></div>
+                <div class="col-md-3"><label class="small fw-bold">Lugar Nac.</label><input type="text" name="LugNacInd" id="editLugNacInd" class="form-control form-control-sm" required data-was-required="true"></div>
+                <div class="col-md-3"><label class="small fw-bold">Sexo</label><select name="SexInd" id="editSexInd" class="form-select form-select-sm" required data-was-required="true"><option value="1">Masculino</option><option value="2">Femenino</option></select></div>
+                <div class="col-md-3"><label class="small fw-bold">Filiación</label><select name="FilInd" id="editFilInd" class="form-select form-select-sm" required data-was-required="true"><option value="1">Reconocido</option><option value="2">Legítimo</option><option value="3">Natural</option></select></div>
             </div>
 
             <!-- Padres -->
             <h6 class="text-primary border-bottom pb-1">Padres</h6>
             <div class="row g-2 mb-3">
-                <div class="col-md-6"><label class="small fw-bold">Madre (Nom)</label><input type="text" name="NomMad" id="editNomMad" class="form-control form-control-sm"></div>
-                <div class="col-md-6"><label class="small fw-bold">Madre (Ape)</label><input type="text" name="ApeMad" id="editApeMad" class="form-control form-control-sm"></div>
+                <div class="col-md-6"><label class="small fw-bold">Madre (Nom)</label><input type="text" name="NomMad" id="editNomMad" class="form-control form-control-sm" required data-was-required="true"></div>
+                <div class="col-md-6"><label class="small fw-bold">Madre (Ape)</label><input type="text" name="ApeMad" id="editApeMad" class="form-control form-control-sm" required data-was-required="true"></div>
                 <div class="col-md-6"><label class="small fw-bold">Padre (Nom)</label><input type="text" name="NomPad" id="editNomPad" class="form-control form-control-sm"></div>
                 <div class="col-md-6"><label class="small fw-bold">Padre (Ape)</label><input type="text" name="ApePad" id="editApePad" class="form-control form-control-sm"></div>
             </div>
@@ -331,10 +341,10 @@ $jerarquias = $this->model->obtener_todos("jerarquia_ministro");
             <!-- Padrinos -->
             <h6 class="text-primary border-bottom pb-1">Padrinos</h6>
             <div class="row g-2 mb-3">
-                <div class="col-md-6"><label class="small fw-bold">Padrino (Nom)</label><input type="text" name="Pad1Nom" id="editPad1Nom" class="form-control form-control-sm"></div>
-                <div class="col-md-6"><label class="small fw-bold">Padrino (Ape)</label><input type="text" name="Pad1Ape" id="editPad1Ape" class="form-control form-control-sm"></div>
-                <div class="col-md-6"><label class="small fw-bold">Madrina (Nom)</label><input type="text" name="Pad2Nom" id="editPad2Nom" class="form-control form-control-sm"></div>
-                <div class="col-md-6"><label class="small fw-bold">Madrina (Ape)</label><input type="text" name="Pad2Ape" id="editPad2Ape" class="form-control form-control-sm"></div>
+                <div class="col-md-6"><label class="small fw-bold">Padrino (Nom)</label><input type="text" name="Pad1Nom" id="editPad1Nom" class="form-control form-control-sm" required data-was-required="true"></div>
+                <div class="col-md-6"><label class="small fw-bold">Padrino (Ape)</label><input type="text" name="Pad1Ape" id="editPad1Ape" class="form-control form-control-sm" required data-was-required="true"></div>
+                <div class="col-md-6"><label class="small fw-bold">Madrina (Nom)</label><input type="text" name="Pad2Nom" id="editPad2Nom" class="form-control form-control-sm" required data-was-required="true"></div>
+                <div class="col-md-6"><label class="small fw-bold">Madrina (Ape)</label><input type="text" name="Pad2Ape" id="editPad2Ape" class="form-control form-control-sm" required data-was-required="true"></div>
             </div>
 
             <!-- Otros -->
@@ -481,14 +491,6 @@ $(document).ready(function() {
     renderTabla();
   });
 
-  /* =============== Utilidad para formatear fecha =============== */
-  function formatearFecha(iso) {
-    if (!iso) return "";
-    const partes = iso.split("-");
-    if (partes.length !== 3) return iso;
-    return partes[2] + "/" + partes[1] + "/" + partes[0];
-  }
-
   function textoFiliacion(cod) {
     if (cod == 1 || cod === "1") return "Reconocido";
     if (cod == 0 || cod === "0") return "No reconocido";
@@ -514,8 +516,8 @@ $(document).ready(function() {
           $("#fichaPadres").text(d.padres || "");
           $("#fichaFiliacion").text(textoFiliacion(d.filiacion));
           $("#fichaLugarNac").text(d.lugar_nac || "");
-          $("#fichaFechaNac").text(formatearFecha(d.fec_nac));
-          $("#fichaFechaBaut").text(formatearFecha(d.fecha_bautizo));
+          $("#fichaFechaNac").text(d.fec_nac);
+          $("#fichaFechaBaut").text(d.fecha_bautizo);
           $("#fichaLugarBaut").text(d.lugar_bautizo || "");
           $("#fichaPadrinos").text(d.padrinos || "");
           $("#fichaMinistro").text(d.ministro || "");
@@ -597,13 +599,14 @@ $(document).ready(function() {
               $("#editIdInd").val(d.IdInd);
               $("#editNumLib").val(d.NumLib);
               $("#editNumFol").val(d.NumFol);
-              $("#editFechCel").val(d.FechCel);
+              $("#editFechCel").val(d.FechCel === '0000-00-00' ? '' : d.FechCel);
+              $("#editEstCel").val(d.EstCel);
               $("#editLugar").val(d.Lugar);
               $("#editIdMin").val(d.IdMin); // Asegúrate que el value del option coincida con IdMin
               
               $("#editNomInd").val(d.NomInd);
               $("#editApeInd").val(d.ApeInd);
-              $("#editFecNacInd").val(d.FecNacInd);
+              $("#editFecNacInd").val(d.FecNacInd === '0000-00-00' ? '' : d.FecNacInd);
               $("#editLugNacInd").val(d.LugNacInd);
               $("#editSexInd").val(d.SexInd);
               $("#editFilInd").val(d.FilInd);
@@ -645,7 +648,17 @@ $(document).ready(function() {
   });
 
   $("#btnGuardarEdicion").click(function() {
-      const data = $("#formEditarBautizo").serialize();
+      const form = document.getElementById('formEditarBautizo');
+
+      // 🔹 Validación HTML5
+      if (!form.checkValidity()) {
+          form.reportValidity();
+          Swal.fire("Campos incompletos", "Por favor, complete todos los campos obligatorios.", "warning");
+          return;
+      }
+
+      const data = $(form).serialize();
+      
       $.post("?controller=sacrej&action=api_guardar_edicion_bautizo", data, function(res) {
           if(res.status === 'ok') {
               Swal.fire("Éxito", res.msg, "success").then(() => location.reload());

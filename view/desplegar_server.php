@@ -57,7 +57,7 @@
                                     <th>Fecha Bautizo</th>
                                     <th>Libro</th>
                                     <th>Folio</th>
-                                    <th>Detalles</th>
+                                    <th>Imagen</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -70,14 +70,11 @@
                                     <td><?= htmlspecialchars($row['IdInd']) ?></td>
                                     <td><?= htmlspecialchars($row['NomInd']) ?></td>
                                     <td><?= htmlspecialchars($row['ApeInd']) ?></td>
-                                    <td><?= date('d/m/Y', strtotime($row['FecNacInd'])) ?></td>
-                                    <td><?= date('d/m/Y', strtotime($row['FechCel'])) ?></td>
+                                    <td><?= ($row['FecNacInd'] && $row['FecNacInd'] !== '0000-00-00') ? date('d/m/Y', strtotime($row['FecNacInd'])) : '' ?></td>
+                                    <td><?= ($row['FechCel'] && $row['FechCel'] !== '0000-00-00') ? date('d/m/Y', strtotime($row['FechCel'])) : '' ?></td>
                                     <td><?= htmlspecialchars($row['NumLib']) ?></td>
                                     <td><?= htmlspecialchars($row['NumFol']) ?></td>
                                     <td class="text-nowrap">
-                                        <button class="btn btn-sm btn-info text-white btnDetalle" data-idcel="<?= $row['IdCel'] ?>">
-                                            Ver
-                                        </button>
                                         <?php if (!empty($row['UrlArchivo'])): ?>
                                             <a href="<?= htmlspecialchars($row['UrlArchivo']) ?>" target="_blank" class="btn btn-sm btn-success ms-1" title="Ver Imagen">
                                                 📷
@@ -167,23 +164,33 @@
             <div class="modal-body">
                 <form id="formEditarPendiente">
                     <input type="hidden" id="editIndex" name="index">
+
+                    <!-- Estatus -->
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Estatus del Acta</label>
+                        <select id="editEstCel" name="EstCel" class="form-select form-select-sm">
+                            <option value="1">Estandar</option>
+                            <option value="2">Caso Especial</option>
+                            <option value="0">Nulo</option>
+                        </select>
+                    </div>
                     
                     <!-- Encabezado -->
                     <div class="row g-2 mb-3">
-                        <div class="col-md-4"><label class="form-label small">N° Celebración</label><input type="number" id="editIdCel" name="IdCel" class="form-control form-control-sm"></div>
-                        <div class="col-md-4"><label class="form-label small">Libro</label><input type="number" id="editNumLib" name="NumLib" class="form-control form-control-sm"></div>
-                        <div class="col-md-4"><label class="form-label small">Folio</label><input type="number" id="editNumFol" name="NumFol" class="form-control form-control-sm"></div>
+                        <div class="col-md-4"><label class="form-label small">N° Celebración</label><input type="number" id="editIdCel" name="IdCel" class="form-control form-control-sm" required data-was-required="true"></div>
+                        <div class="col-md-4"><label class="form-label small">Libro</label><input type="number" id="editNumLib" name="NumLib" class="form-control form-control-sm" required data-was-required="true"></div>
+                        <div class="col-md-4"><label class="form-label small">Folio</label><input type="number" id="editNumFol" name="NumFol" class="form-control form-control-sm" required data-was-required="true"></div>
                     </div>
 
                     <!-- Bautizado -->
                     <h6 class="text-secondary border-bottom">Datos del Bautizado</h6>
                     <div class="row g-2 mb-3">
-                        <div class="col-md-6"><label class="form-label small">Nombre</label><input type="text" id="editNomInd" name="NomInd" class="form-control form-control-sm"></div>
-                        <div class="col-md-6"><label class="form-label small">Apellido</label><input type="text" id="editApeInd" name="ApeInd" class="form-control form-control-sm"></div>
-                        <div class="col-md-4"><label class="form-label small">Fecha Nac.</label><input type="date" id="editFecNacInd" name="FecNacInd" class="form-control form-control-sm"></div>
-                        <div class="col-md-4"><label class="form-label small">Lugar Nac.</label><input type="text" id="editLugNacInd" name="LugNacInd" class="form-control form-control-sm"></div>
+                        <div class="col-md-6"><label class="form-label small">Nombre</label><input type="text" id="editNomInd" name="NomInd" class="form-control form-control-sm" required data-was-required="true"></div>
+                        <div class="col-md-6"><label class="form-label small">Apellido</label><input type="text" id="editApeInd" name="ApeInd" class="form-control form-control-sm" required data-was-required="true"></div>
+                        <div class="col-md-4"><label class="form-label small">Fecha Nac.</label><input type="date" id="editFecNacInd" name="FecNacInd" class="form-control form-control-sm" required data-was-required="true"></div>
+                        <div class="col-md-4"><label class="form-label small">Lugar Nac.</label><input type="text" id="editLugNacInd" name="LugNacInd" class="form-control form-control-sm" required data-was-required="true"></div>
                         <div class="col-md-4"><label class="form-label small">Filiación</label>
-                            <select id="editFilInd" name="FilInd" class="form-select form-select-sm">
+                            <select id="editFilInd" name="FilInd" class="form-select form-select-sm" required data-was-required="true">
                                 <option value="1">Reconocido</option><option value="2">Legítimo</option><option value="3">Natural</option><option value="4">Ilegítimo</option><option value="0">No reconocido</option>
                             </select>
                         </div>
@@ -192,8 +199,8 @@
                     <!-- Padres -->
                     <h6 class="text-secondary border-bottom">Padres</h6>
                     <div class="row g-2 mb-3">
-                        <div class="col-md-6"><label class="form-label small">Madre (Nom)</label><input type="text" id="editNomMad" name="NomMad" class="form-control form-control-sm"></div>
-                        <div class="col-md-6"><label class="form-label small">Madre (Ape)</label><input type="text" id="editApeMad" name="ApeMad" class="form-control form-control-sm"></div>
+                        <div class="col-md-6"><label class="form-label small">Madre (Nom)</label><input type="text" id="editNomMad" name="NomMad" class="form-control form-control-sm" required data-was-required="true"></div>
+                        <div class="col-md-6"><label class="form-label small">Madre (Ape)</label><input type="text" id="editApeMad" name="ApeMad" class="form-control form-control-sm" required data-was-required="true"></div>
                         <div class="col-md-6"><label class="form-label small">Padre (Nom)</label><input type="text" id="editNomPad" name="NomPad" class="form-control form-control-sm"></div>
                         <div class="col-md-6"><label class="form-label small">Padre (Ape)</label><input type="text" id="editApePad" name="ApePad" class="form-control form-control-sm"></div>
                     </div>
@@ -201,10 +208,10 @@
                     <!-- Celebración -->
                     <h6 class="text-secondary border-bottom">Celebración</h6>
                     <div class="row g-2 mb-3">
-                        <div class="col-md-4"><label class="form-label small">Fecha Bautizo</label><input type="date" id="editFechCel" name="FechCel" class="form-control form-control-sm"></div>
-                        <div class="col-md-4"><label class="form-label small">Lugar</label><input type="text" id="editLugar" name="Lugar" class="form-control form-control-sm"></div>
+                        <div class="col-md-4"><label class="form-label small">Fecha Bautizo</label><input type="date" id="editFechCel" name="FechCel" class="form-control form-control-sm" required data-was-required="true"></div>
+                        <div class="col-md-4"><label class="form-label small">Lugar</label><input type="text" id="editLugar" name="Lugar" class="form-control form-control-sm" required data-was-required="true"></div>
                         <div class="col-md-4"><label class="form-label small">Ministro</label>
-                            <select id="editIdMin" name="IdMin" class="form-select form-select-sm">
+                            <select id="editIdMin" name="IdMin" class="form-select form-select-sm" required data-was-required="true">
                                 <option value="">Seleccione...</option>
                                 <?php 
                                 if (isset($ministros) && $ministros) {
@@ -221,10 +228,10 @@
                     <!-- Padrinos -->
                     <h6 class="text-secondary border-bottom">Padrinos</h6>
                     <div class="row g-2 mb-3">
-                        <div class="col-md-6"><label class="form-label small">Padrino (Nom)</label><input type="text" id="editPad1Nom" name="Pad1Nom" class="form-control form-control-sm"></div>
-                        <div class="col-md-6"><label class="form-label small">Padrino (Ape)</label><input type="text" id="editPad1Ape" name="Pad1Ape" class="form-control form-control-sm"></div>
-                        <div class="col-md-6"><label class="form-label small">Madrina (Nom)</label><input type="text" id="editPad2Nom" name="Pad2Nom" class="form-control form-control-sm"></div>
-                        <div class="col-md-6"><label class="form-label small">Madrina (Ape)</label><input type="text" id="editPad2Ape" name="Pad2Ape" class="form-control form-control-sm"></div>
+                        <div class="col-md-6"><label class="form-label small">Padrino (Nom)</label><input type="text" id="editPad1Nom" name="Pad1Nom" class="form-control form-control-sm" required data-was-required="true"></div>
+                        <div class="col-md-6"><label class="form-label small">Padrino (Ape)</label><input type="text" id="editPad1Ape" name="Pad1Ape" class="form-control form-control-sm" required data-was-required="true"></div>
+                        <div class="col-md-6"><label class="form-label small">Madrina (Nom)</label><input type="text" id="editPad2Nom" name="Pad2Nom" class="form-control form-control-sm" required data-was-required="true"></div>
+                        <div class="col-md-6"><label class="form-label small">Madrina (Ape)</label><input type="text" id="editPad2Ape" name="Pad2Ape" class="form-control form-control-sm" required data-was-required="true"></div>
                     </div>
 
                     <!-- Otros -->
@@ -576,6 +583,7 @@ function editarPendiente(index) {
         $('#editPad2Ape').val(d.Pad2Ape);
         $('#editNotMar').val(d.NotMar);
         $('#editRegCiv').val(d.RegCiv);
+        $('#editEstCel').val(d.EstCel || '1'); // Default a Estandar si no existe
         $('#editIdInd').val(d.IdInd);
         $('#editSexInd').val(d.SexInd);
         $('#editRutaImagen').val(d.RutaImagen || '');
@@ -594,7 +602,16 @@ function editarPendiente(index) {
 }
 
 function guardarEdicionPendiente() {
-    const formData = $('#formEditarPendiente').serialize();
+    const form = document.getElementById('formEditarPendiente');
+
+    // 🔹 Validación HTML5
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        Swal.fire("Campos incompletos", "Por favor, complete todos los campos obligatorios.", "warning");
+        return;
+    }
+
+    const formData = $(form).serialize();
     
     $.post('?controller=sacrej&action=api_editar_bautizo_temporal', formData, function(res) {
         if (res.status === 'ok') {
@@ -619,19 +636,17 @@ $(document).on('click', '.btnDetalle', function() {
             let d = res.data;
             $('#dNombre').text(d.nombre);
             $('#dApellido').text(d.apellido);
-            $('#dFecNac').text(d.fec_nac);
+            $('#dFecNac').text(d.fec_nac); // El formato viene del controlador
             $('#dLugNac').text(d.lugar_nac);
-            
-            let fil = d.filiacion;
+             
             if(fil == 1) fil = 'Reconocido';
             else if(fil == 2) fil = 'Legítimo';
             else if(fil == 3) fil = 'Natural';
             $('#dFiliacion').text(fil);
             
-            $('#dFecBaut').text(d.fecha_bautizo);
+            $('#dFecBaut').text(d.fecha_bautizo); // El formato viene del controlador
             $('#dLugBaut').text(d.lugar_bautizo);
-            $('#dLibro').text(d.num_libro);
-            $('#dFolio').text(d.num_folio);
+            
             $('#dMinistro').text(d.ministro);
             $('#dTipo').text(d.tipo_celebracion);
             

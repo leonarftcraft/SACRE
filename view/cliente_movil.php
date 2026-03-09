@@ -210,9 +210,18 @@
                 </div>
                 <div class="card-body">
                     <form id="formBautizo${idSuffix}" class="form-bautizo" data-index="${index}" onsubmit="return false;">
+                        <!-- Estatus -->
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Estatus del Acta</label>
+                            <select id="EstCel${idSuffix}" name="EstCel" class="form-select form-select-sm">
+                                <option value="1" selected>Estandar</option>
+                                <option value="2">Caso Especial</option>
+                                <option value="0">Nulo</option>
+                            </select>
+                        </div>
                         <!-- Encabezado -->
                         <div class="row g-2">
-                            <div class="col-12"><label class="form-label small">N°</label><input type="number" id="IdCel${idSuffix}" name="IdCel" class="form-control form-control-sm" required></div>
+                            <div class="col-12"><label class="form-label small">N°</label><input type="number" id="IdCel${idSuffix}" name="IdCel" class="form-control form-control-sm" required data-was-required="true"></div>
                             <input type="hidden" id="NumFol${idSuffix}" name="NumFol">
                             <input type="hidden" id="NumLib${idSuffix}" name="NumLib">
                             <input type="hidden" id="RutaImagen${idSuffix}" name="RutaImagen">
@@ -221,24 +230,23 @@
                         <!-- Bautizado -->
                         <h6 class="mt-3 text-secondary border-bottom">Datos del Bautizado</h6>
                         <div class="row g-2">
-                            <div class="col-6"><label class="form-label small">Nombre</label><input type="text" id="NomInd${idSuffix}" name="NomInd" class="form-control form-control-sm" required></div>
-                            <div class="col-6"><label class="form-label small">Apellido</label><input type="text" id="ApeInd${idSuffix}" name="ApeInd" class="form-control form-control-sm" required></div>
-                            <div class="col-6"><label class="form-label small">Sexo</label><select id="SexInd${idSuffix}" name="SexInd" class="form-select form-select-sm" required><option value="1">Masculino</option><option value="2">Femenino</option></select></div>
-                            <div class="col-6"><label class="form-label small">Filiación</label><select id="FilInd${idSuffix}" name="FilInd" class="form-select form-select-sm" required><option value="">Seleccione...</option><option value="1">Reconocido</option><option value="2">Legítimo</option><option value="3">Natural</option><option value="4">Ilegítimo</option><option value="0">No reconocido</option></select></div>
+                            <div class="col-6"><label class="form-label small">Nombre</label><input type="text" id="NomInd${idSuffix}" name="NomInd" class="form-control form-control-sm" required data-was-required="true"></div>
+                            <div class="col-6"><label class="form-label small">Apellido</label><input type="text" id="ApeInd${idSuffix}" name="ApeInd" class="form-control form-control-sm" required data-was-required="true"></div>
+                            <div class="col-6"><label class="form-label small">Sexo</label><select id="SexInd${idSuffix}" name="SexInd" class="form-select form-select-sm" required data-was-required="true"><option value="1">Masculino</option><option value="2">Femenino</option></select></div>
+                            <div class="col-6"><label class="form-label small">Filiación</label><select id="FilInd${idSuffix}" name="FilInd" class="form-select form-select-sm" required data-was-required="true"><option value="">Seleccione...</option><option value="1">Reconocido</option><option value="2">Legítimo</option><option value="3">Natural</option><option value="4">Ilegítimo</option><option value="0">No reconocido</option></select></div>
                         </div>
-                        <input type="hidden" id="IdInd${idSuffix}" name="IdInd">
                         
                         <div class="row g-2 mt-1">
-                            <div class="col-12"><label class="form-label small">Lugar de nacimiento</label><input type="text" id="LugNacInd${idSuffix}" name="LugNacInd" class="form-control form-control-sm" required></div>
-                            <div class="col-12"><label class="form-label small">Fecha Nac.</label><input type="date" id="FecNacInd${idSuffix}" name="FecNacInd" class="form-control form-control-sm" required></div>
+                            <div class="col-12"><label class="form-label small">Lugar de nacimiento</label><input type="text" id="LugNacInd${idSuffix}" name="LugNacInd" class="form-control form-control-sm" required data-was-required="true"></div>
+                            <div class="col-12"><label class="form-label small">Fecha Nac.</label><input type="date" id="FecNacInd${idSuffix}" name="FecNacInd" class="form-control form-control-sm" required data-was-required="true"></div>
                         </div>
 
                         <!-- Padres -->
                         <h6 class="mt-3 text-secondary border-bottom">Padres</h6>
                         <div class="row g-2">
                             <div class="col-12"><strong>Madre:</strong></div>
-                            <div class="col-6"><input type="text" id="NomMad${idSuffix}" name="NomMad" class="form-control form-control-sm" placeholder="Nombre" required></div>
-                            <div class="col-6"><input type="text" id="ApeMad${idSuffix}" name="ApeMad" class="form-control form-control-sm" placeholder="Apellido" required></div>
+                            <div class="col-6"><input type="text" id="NomMad${idSuffix}" name="NomMad" class="form-control form-control-sm" placeholder="Nombre" required data-was-required="true"></div>
+                            <div class="col-6"><input type="text" id="ApeMad${idSuffix}" name="ApeMad" class="form-control form-control-sm" placeholder="Apellido" required data-was-required="true"></div>
                             <div class="col-12 mt-1"><strong>Padre:</strong></div>
                             <div class="col-6"><input type="text" id="NomPad${idSuffix}" name="NomPad" class="form-control form-control-sm" placeholder="Nombre"></div>
                             <div class="col-6"><input type="text" id="ApePad${idSuffix}" name="ApePad" class="form-control form-control-sm" placeholder="Apellido"></div>
@@ -247,12 +255,12 @@
                         <!-- Celebración -->
                         <h6 class="mt-3 text-secondary border-bottom">Detalles Celebración</h6>
                         <div class="row g-2">
-                            <div class="col-6"><label class="form-label small">Fecha</label><input type="date" id="FechCel${idSuffix}" name="FechCel" class="form-control form-control-sm" required></div>
-                            <div class="col-6"><label class="form-label small">Lugar de Bautizo</label><input type="text" id="Lugar${idSuffix}" name="Lugar" class="form-control form-control-sm" required></div>
+                            <div class="col-6"><label class="form-label small">Fecha</label><input type="date" id="FechCel${idSuffix}" name="FechCel" class="form-control form-control-sm" required data-was-required="true"></div>
+                            <div class="col-6"><label class="form-label small">Lugar de Bautizo</label><input type="text" id="Lugar${idSuffix}" name="Lugar" class="form-control form-control-sm" required data-was-required="true"></div>
                             <div class="col-12">
                                 <label class="form-label small">Ministro</label>
                                 <div class="input-group input-group-sm">
-                                    <select id="IdMin${idSuffix}" name="IdMin" class="form-select" required>${ministrosOptions}</select>
+                                    <select id="IdMin${idSuffix}" name="IdMin" class="form-select" required data-was-required="true">${ministrosOptions}</select>
                                     <button class="btn btn-outline-secondary" type="button" onclick="abrirModalManual()">+</button>
                                 </div>
                             </div>
@@ -262,13 +270,13 @@
                         <h6 class="mt-3 text-secondary border-bottom">Padrinos</h6>
                         <div class="row g-2">
                             <div class="col-12"><strong>Padrino:</strong></div>
-                            <div class="col-6"><input type="text" id="Pad1Nom${idSuffix}" name="Pad1Nom" class="form-control form-control-sm" placeholder="Nombre" required></div>
-                            <div class="col-6"><input type="text" id="Pad1Ape${idSuffix}" name="Pad1Ape" class="form-control form-control-sm" placeholder="Apellido" required></div>
+                            <div class="col-6"><input type="text" id="Pad1Nom${idSuffix}" name="Pad1Nom" class="form-control form-control-sm" placeholder="Nombre" required data-was-required="true"></div>
+                            <div class="col-6"><input type="text" id="Pad1Ape${idSuffix}" name="Pad1Ape" class="form-control form-control-sm" placeholder="Apellido" required data-was-required="true"></div>
                             <input type="hidden" id="Pad1Sex${idSuffix}" name="Pad1Sex" value="1">
                             
                             <div class="col-12 mt-1"><strong>Madrina:</strong></div>
-                            <div class="col-6"><input type="text" id="Pad2Nom${idSuffix}" name="Pad2Nom" class="form-control form-control-sm" placeholder="Nombre" required></div>
-                            <div class="col-6"><input type="text" id="Pad2Ape${idSuffix}" name="Pad2Ape" class="form-control form-control-sm" placeholder="Apellido" required></div>
+                            <div class="col-6"><input type="text" id="Pad2Nom${idSuffix}" name="Pad2Nom" class="form-control form-control-sm" placeholder="Nombre" required data-was-required="true"></div>
+                            <div class="col-6"><input type="text" id="Pad2Ape${idSuffix}" name="Pad2Ape" class="form-control form-control-sm" placeholder="Apellido" required data-was-required="true"></div>
                             <input type="hidden" id="Pad2Sex${idSuffix}" name="Pad2Sex" value="2">
                         </div>
 
@@ -352,7 +360,9 @@
            $('#ApePad' + idSuffix).val(cleanValue(datos['Apellido del Padre']));
             $('#FilInd' + idSuffix).val(obtenerValorFiliacion(cleanValue(datos['Filiacion'])));
             $('#FechCel' + idSuffix).val(formatearFechaParaInput(cleanValue(datos['Fecha de bautizo'])));
-            $('#Lugar' + idSuffix).val("Parroquia Sagrado Corazon de Jesus");
+            // 🔹 Si la IA no devuelve lugar, poner el default. Si devuelve, usar el de la IA.
+            const lugarBautizo = cleanValue(datos['Lugar de Bautizo']);
+            $('#Lugar' + idSuffix).val(lugarBautizo || "Parroquia Sagrado Corazon de Jesus");
             
             // 🔹 Seleccionar Ministro por nombre
             let minNombre = cleanValue(datos['Ministro']);
@@ -371,9 +381,8 @@
             $('#NotMar' + idSuffix).val(cleanValue(datos['Observaciones']));
             $('#RegCiv' + idSuffix).val(cleanValue(datos['Registro Civil']));
 
-
-            // Disparar change para que se genere el IdInd automáticamente
-            $("#FecNacInd" + idSuffix + ", #NomInd" + idSuffix + ", #ApeInd" + idSuffix).trigger('change');
+            // 🔹 Disparar el change en el estatus para que la validación se aplique al poblar
+            $('#EstCel' + idSuffix).trigger('change');
         }
 
         // 🔹 Restaurar sesión al cargar la página (si se actualizó)
@@ -914,6 +923,17 @@
                 conectarUsuario(true);
             }
 
+            // --- Lógica de validación por Estatus para formularios dinámicos ---
+            $('#forms-container').on('change', 'select[name="EstCel"]', function() {
+                const form = $(this).closest('form');
+                const estatus = $(this).val();
+                const isStandard = (estatus == '1');
+
+                form.find('[data-was-required="true"]').each(function() {
+                    $(this).prop('required', isStandard);
+                });
+            });
+
             // Actualizar libroActual cuando se edita el campo
             $('#libroGeneral').on('input change', function() {
                 libroActual = $(this).val();
@@ -926,24 +946,6 @@
                 $('input[name="NumFol"]').val(folioActual);
             });
 
-            // Usar delegación de eventos en un contenedor estático
-            $('#forms-container').on('change blur', 'input[name="NomInd"], input[name="ApeInd"], input[name="FecNacInd"]', function() {
-                const form = $(this).closest('form');
-                const index = form.data('index');
-                generarIdInd(index);
-            });
-
-            // Generar ID automático para un form específico
-            function generarIdInd(index) {
-                const idSuffix = '_' + index;
-                const f = $("#FecNacInd" + idSuffix).val();
-                const n = $("#NomInd" + idSuffix).val().trim();
-                const a = $("#ApeInd" + idSuffix).val().trim();
-                if (!f || !n || !a) return "";
-                const id = f.replaceAll("-", "") + n[0].toUpperCase() + a[0].toUpperCase();
-                $("#IdInd" + idSuffix).val(id);
-            }
-
             // Enviar formulario
             $('#btnGuardarTodo').click(async function() {
                 const $btn = $(this);
@@ -952,14 +954,22 @@
                 const forms = $('.form-bautizo');
                 if (forms.length === 0) return;
 
-                // Validar que todos tengan ID generado (campos obligatorios llenos)
-                let valid = true;
+                // 🔹 Validar todos los formularios usando HTML5 checkValidity
+                let allFormsValid = true;
                 forms.each(function() {
-                    if (!$(this).find('input[name="IdInd"]').val()) valid = false;
+                    if (!this.checkValidity()) {
+                        // Crear un botón de submit temporal para mostrar los mensajes de error del navegador
+                        let tempSubmit = document.createElement('button');
+                        $(this).append(tempSubmit);
+                        tempSubmit.click();
+                        $(this).remove(tempSubmit);
+                        allFormsValid = false;
+                        return false; // Detener el bucle
+                    }
                 });
 
-                if (!valid) {
-                    Swal.fire('Falta información', 'Complete nombre, apellido y fecha de nacimiento en todos los formularios.', 'warning');
+                if (!allFormsValid) {
+                    Swal.fire('Falta información', 'Por favor, complete todos los campos obligatorios.', 'warning');
                     return;
                 }
 

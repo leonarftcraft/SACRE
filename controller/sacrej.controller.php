@@ -480,6 +480,16 @@ Antes de comenzar la transcripción, lee todas las instrucciones a continuación
     - **Fidelidad de datos:** Mantén la ortografía, acentuación y abreviaturas exactas del documento original (ej. si dice "Bautizé", no lo corrijas a "Bauticé"). Si un dato no es legible o no existe, usa `null`.
 **Control sobre Fechas:**
 Las fechas extraidas deben de ser interpretadas en formato DD/MM/YYYY. 
+**Control sobre todas las claves:**
+Si alguna clave no la encuentras en la iamgen ponle null.  
+**Cuando extraigas la clave N° extrae el numero sin "." y ","**
+ **Control sobre la clave Filiacion:**
+ Analiza el texto de la filiación y asigna el valor numérico correspondiente según estas opciones (si el texto significa lo mismo, usa el número): si no encuentras filiacion ponle null
+ - "Reconocido" -> "Reconocido"
+ - "Legítimo" -> "Legítimo"
+ - "Natural" -> "Natural"
+ - "Ilegítimo" -> "Ilegítimo"
+ - "No reconocido" -> "No reconocido"
 **Control Folio N°:**
 El folio N. lo puedes encontrar como folio o como un numero en la parte superio de la imagen.
 - **instrucciones para extraer la clave: Observaciones:** para esta clave: limitate a extraer exactamente lo que te digo, debajo del codigo de celebracion que en la imagen se identifica con "N°" puedes encontrar un texto puede ser un nombre y apellido  puedes tomarlo como Observaciones, ese texto es el que debes colocar en la clave Observaciones y si en la imagen en la clave observaciones hay algo concatena las dos observaciones.
@@ -536,8 +546,40 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
         $keysToTry = [];
 
         if (!empty($keysGuardadas)) {
-            $keysToTry = array_values($keysGuardadas);
-            shuffle($keysToTry); // Mezclar para balancear carga
+            $allKeys = array_values($keysGuardadas);
+            $numKeys = count($allKeys);            
+
+            // 🔹 Lógica de cola (Round-Robin) con bloqueo de archivo para concurrencia
+            $iteratorFile = 'api_key_iterator.txt';
+            $fp = fopen($iteratorFile, 'c+'); // 'c+' crea si no existe, y posiciona al inicio
+
+            if (flock($fp, LOCK_EX)) { // 🔹 Bloqueo exclusivo para escritura
+                $currentIndex = (int)fread($fp, 1024); // Leer contenido actual
+
+                // Asegurarse que el índice esté dentro de los límites
+                if ($currentIndex >= $numKeys) {
+                    $currentIndex = 0;
+                }
+
+                // Reordenar el array para que la llave actual sea la primera
+                $part2 = array_slice($allKeys, $currentIndex);
+                $part1 = array_slice($allKeys, 0, $currentIndex);
+                $keysToTry = array_merge($part2, $part1);
+
+                // Actualizar el índice para la SIGUIENTE petición
+                $nextIndex = ($currentIndex + 1) % $numKeys;
+                
+                ftruncate($fp, 0);      // Vaciar archivo
+                rewind($fp);            // Mover puntero al inicio
+                fwrite($fp, $nextIndex); // Escribir nuevo índice
+                
+                flock($fp, LOCK_UN); // 🔹 Liberar bloqueo
+            } else {
+                // Si por alguna razón no se puede obtener el bloqueo, usar una llave aleatoria como fallback
+                $keysToTry = $allKeys;
+                shuffle($keysToTry);
+            }
+            fclose($fp);
         } else {
             // Llave por defecto si no hay registradas
             $keysToTry[] = [
@@ -666,6 +708,8 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
                     <th>Ministro</th>
                     <th>Registro Civil</th>
                     <th>Observaciones</th>
+                    <th>Digitalizado Por</th>
+                    <th>Fecha Digitalización</th>
                 </tr>
               </thead>";
         echo "<tbody>";
@@ -676,16 +720,20 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
                 $filiaciones = ['0'=>'No reconocido', '1'=>'Reconocido', '2'=>'Legítimo', '3'=>'Natural', '4'=>'Ilegítimo'];
                 $fil = $filiaciones[$row['FilInd']] ?? $row['FilInd'];
                 
+                $fecCel = ($row['FechCel'] && $row['FechCel'] !== '0000-00-00') ? date('d/m/Y', strtotime($row['FechCel'])) : '';
+                $fecNac = ($row['FecNacInd'] && $row['FecNacInd'] !== '0000-00-00') ? date('d/m/Y', strtotime($row['FecNacInd'])) : '';
+                $fecDig = (!empty($row['FechaRegistro'])) ? date('d/m/Y H:i:s', strtotime($row['FechaRegistro'])) : '';
+
                 echo "<tr>";
                 echo "<td>" . $row['IdCel'] . "</td>";
                 echo "<td>" . $row['NumLib'] . "</td>";
                 echo "<td>" . $row['NumFol'] . "</td>";
-                echo "<td>" . date('d/m/Y', strtotime($row['FechCel'])) . "</td>";
+                echo "<td>" . $fecCel . "</td>";
                 echo "<td>" . $row['LugarBautizo'] . "</td>";
                 echo "<td>" . $row['NomInd'] . "</td>";
                 echo "<td>" . $row['ApeInd'] . "</td>";
                 echo "<td>" . $sexo . "</td>";
-                echo "<td>" . date('d/m/Y', strtotime($row['FecNacInd'])) . "</td>";
+                echo "<td>" . $fecNac . "</td>";
                 echo "<td>" . $row['LugNacInd'] . "</td>";
                 echo "<td>" . $fil . "</td>";
                 echo "<td>" . $row['Padres'] . "</td>";
@@ -693,6 +741,8 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
                 echo "<td>" . $row['MinNom'] . ' ' . $row['MinApe'] . "</td>";
                 echo "<td>" . $row['RegCiv'] . "</td>";
                 echo "<td>" . $row['NotMar'] . "</td>";
+                echo "<td>" . ($row['NombreDigitalizador'] ?? '') . "</td>";
+                echo "<td>" . $fecDig . "</td>";
                 echo "</tr>";
             }
         }
@@ -819,7 +869,6 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
     private function _procesar_datos_bautizo($data) {
         
         $individuo = [
-            'IdInd'     => $data['IdInd'] ?? '',
             'NomInd'    => $data['NomInd'] ?? '',
             'ApeInd'    => $data['ApeInd'] ?? '',
             'SexInd'    => $data['SexInd'] ?? '',
@@ -854,7 +903,8 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
         $enlace = [
             'RegCiv'    => $data['RegCiv'] ?? '',
             'NotMar'    => $data['NotMar'] ?? '',
-            'TipCelPad' => $celebracion['TipCel']
+            'TipCelPad' => $celebracion['TipCel'],
+            'EstCel'    => $data['EstCel'] ?? 1
         ];
 
         // Datos de la imagen
@@ -864,11 +914,6 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
                 'UrlArchivo' => $data['RutaImagen'],
                 'NombreDigitalizador' => $data['usuario_envio'] ?? 'Desconocido'
             ];
-        }
-
-        // Validar existencia previa
-        if ($this->model->verificar_existencia_individuo($individuo['IdInd'])) {
-            throw new Exception("El ID {$individuo['IdInd']} ya existe.");
         }
 
         return $this->model->registrar_bautizo_completo(
@@ -1132,7 +1177,6 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
         try {
             // ✅ Datos del individuo
             $individuo = [
-                'IdInd'     => $_POST['IdInd'] ?? '',
                 'NomInd'    => $_POST['NomInd'] ?? '',
                 'ApeInd'    => $_POST['ApeInd'] ?? '',
                 'SexInd'    => $_POST['SexInd'] ?? '',
@@ -1141,13 +1185,6 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
                 'FilInd'    => $_POST['FilInd'] ?? '',
                 'IdUsu'     => $_SESSION['IdUsu'] ?? 1
             ];
-
-            // ✅ Validar si ya existe ese ID (protección previa)
-            $check = $this->model->verificar_existencia_individuo($individuo['IdInd']);
-            if ($check) {
-                echo json_encode(['status' => 'error', 'msg' => 'El ID del bautizado ya existe en la base de datos.']);
-                return;
-            }
 
             // ✅ Datos de la madre
             $madre = ['Nom' => $_POST['NomMad'] ?? '', 'Ape' => $_POST['ApeMad'] ?? '', 'Sex' => 2];
@@ -1179,7 +1216,8 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
             $enlace = [
                 'RegCiv'    => $_POST['RegCiv'] ?? '',
                 'NotMar'    => $_POST['NotMar'] ?? '',
-                'TipCelPad' => $celebracion['TipCel']
+                'TipCelPad' => $celebracion['TipCel'],
+                'EstCel'    => $_POST['EstCel'] ?? 1
             ];
 
             // 🔥 Registrar
@@ -1616,6 +1654,19 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
             $detalle = $this->model->obtener_detalle_celebracion($idCel);
 
             if ($detalle) {
+                // Formatear fechas para evitar mostrar '0000-00-00'
+                if (!empty($detalle['fec_nac']) && $detalle['fec_nac'] !== '0000-00-00') {
+                    $detalle['fec_nac'] = date('d/m/Y', strtotime($detalle['fec_nac']));
+                } else {
+                    $detalle['fec_nac'] = '';
+                }
+
+                if (!empty($detalle['fecha_bautizo']) && $detalle['fecha_bautizo'] !== '0000-00-00') {
+                    $detalle['fecha_bautizo'] = date('d/m/Y', strtotime($detalle['fecha_bautizo']));
+                } else {
+                    $detalle['fecha_bautizo'] = '';
+                }
+
                 echo json_encode([
                     'success' => true,
                     'data'    => $detalle

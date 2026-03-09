@@ -21,21 +21,17 @@
       <tbody id="tbodyMinistros">
         <?php
         if (!isset($this) || !property_exists($this, 'model')) {
-          echo "<tr><td colspan='4' class='text-center text-danger'>Vista cargada sin controlador/modelo.</td></tr>";
+          echo "<tr><td colspan='4' class='text-center text-danger'>Error: Vista cargada sin acceso al modelo.</td></tr>";
         } else {
-          $datos = $this->model->obtener_todos("ministro_celebrante");
+          $datos = $this->model->obtener_ministros_con_jerarquia(); // ✅ Usar la consulta optimizada con JOIN
           if ($datos && $datos->num_rows > 0):
             while ($fila = $datos->fetch_assoc()):
-              $jerarquia = $this->model->obtener_todos("jerarquia_ministro WHERE CodJer=" . intval($fila['CodJer']));
-              $nombreJer = ($jerarquia && $jerarquia->num_rows > 0)
-                ? $jerarquia->fetch_assoc()['NomJer']
-                : '—';
         ?>
         <tr>
           <td class="text-center"><?= htmlspecialchars($fila['IdMinCel']) ?></td>
           <td><?= htmlspecialchars($fila['Nom']) ?></td>
           <td><?= htmlspecialchars($fila['Ape']) ?></td>
-          <td><?= htmlspecialchars($nombreJer) ?></td>
+          <td><?= htmlspecialchars($fila['NomJer'] ?? '—') ?></td>
         </tr>
         <?php
             endwhile;

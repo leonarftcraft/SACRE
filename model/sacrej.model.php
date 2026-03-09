@@ -249,12 +249,11 @@ class sacrejmodel
             }
 
             // 1️⃣ INDIVIDUO
-            $sqlInd = "INSERT INTO individuos (IdInd, NomInd, ApeInd, LugNacInd, FecNacInd, SexInd, FilInd, IdUsu)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+            $sqlInd = "INSERT INTO individuos (NomInd, ApeInd, LugNacInd, FecNacInd, SexInd, FilInd, IdUsu)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)";
             $stmtInd = $this->conexion->prepare($sqlInd);
             $stmtInd->bind_param(
-                "sssssiis",
-                $individuo['IdInd'],
+                "ssssiis",
                 $individuo['NomInd'],
                 $individuo['ApeInd'],
                 $individuo['LugNacInd'],
@@ -264,11 +263,11 @@ class sacrejmodel
                 $individuo['IdUsu']
             );
             if (!$stmtInd->execute()) {
-                if ($this->conexion->errno == 1062) {
-                    throw new Exception("El ID del bautizado ya existe en la base de datos.");
-                }
                 throw new Exception("Error al registrar individuo: " . $stmtInd->error);
             }
+            
+            // 🔹 Capturar el ID autogenerado por la BD
+            $individuo['IdInd'] = $this->conexion->insert_id;
 
             // 2️⃣ CELEBRACIÓN
             $sqlCel = "INSERT INTO celebracion (IdCel, FechCel, TipCel, NumLib, NumFol, IdMin, Lugar)
@@ -292,10 +291,10 @@ class sacrejmodel
             }
 
             // 3️⃣ RELACIÓN individuo ↔ celebración
-            $sqlRel = "INSERT INTO individuo_celebracion (IdInd, IdCel, RegCiv, NotMar, IdImgActa)
-                    VALUES (?, ?, ?, ?, ?)";
+            $sqlRel = "INSERT INTO individuo_celebracion (IdInd, IdCel, RegCiv, NotMar, IdImgActa, EstCel)
+                    VALUES (?, ?, ?, ?, ?, ?)";
             $stmtRel = $this->conexion->prepare($sqlRel);
-            $stmtRel->bind_param("sissi", $individuo['IdInd'], $celebracion['IdCel'], $enlace['RegCiv'], $enlace['NotMar'], $idImgActa);
+            $stmtRel->bind_param("sissii", $individuo['IdInd'], $celebracion['IdCel'], $enlace['RegCiv'], $enlace['NotMar'], $idImgActa, $enlace['EstCel']);
             if (!$stmtRel->execute()) {
                 throw new Exception("Error al vincular individuo con celebración: " . $stmtRel->error);
             }
@@ -653,9 +652,9 @@ class sacrejmodel
             $stmtCel->close();
 
             // 3. Actualizar Enlace (RegCiv, NotMar)
-            $sqlRel = "UPDATE individuo_celebracion SET RegCiv=?, NotMar=? WHERE IdCel=? AND IdInd=?";
+            $sqlRel = "UPDATE individuo_celebracion SET RegCiv=?, NotMar=?, EstCel=? WHERE IdCel=? AND IdInd=?";
             $stmtRel = $this->conexion->prepare($sqlRel);
-            $stmtRel->bind_param("ssis", $data['RegCiv'], $data['NotMar'], $idCel, $idInd);
+            $stmtRel->bind_param("ssiis", $data['RegCiv'], $data['NotMar'], $data['EstCel'], $idCel, $idInd);
             $stmtRel->execute();
             $stmtRel->close();
 
@@ -747,6 +746,7 @@ class sacrejmodel
                     i.IdInd, i.NomInd, i.ApeInd, i.FecNacInd, i.LugNacInd, i.SexInd, i.FilInd,
                     ic.RegCiv, ic.NotMar,
                     m.Nom AS MinNom, m.Ape AS MinApe,
+                    img.NombreDigitalizador, img.FechaRegistro,
                     -- Concatenar Padres
                     GROUP_CONCAT(DISTINCT CONCAT(pad.Nom, ' ', pad.Ape) SEPARATOR ' / ') AS Padres,
                     -- Concatenar Padrinos
@@ -757,6 +757,7 @@ class sacrejmodel
                 LEFT JOIN ministro_celebrante m ON m.IdMinCel = c.IdMin
                 LEFT JOIN padres pad ON pad.IdInd = i.IdInd
                 LEFT JOIN padrinos padr ON padr.IdInd = i.IdInd
+                LEFT JOIN ImgActas img ON ic.IdImgActa = img.IdImg
                 WHERE c.TipCel = 1
                 GROUP BY c.IdCel
                 ORDER BY c.FechCel DESC";

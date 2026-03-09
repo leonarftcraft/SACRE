@@ -66,7 +66,7 @@ CREATE TABLE `individuo_celebracion` (
   `IdCel` int(15) NOT NULL,
   `RegCiv` varchar(15) NOT NULL,
   `NotMar` text NOT NULL,
-  `EstCel` int(2) NOT NULL COMMENT 'Estado de la celebracion, para saber si es anulada, caso especial u otros casos'
+  `EstCel` int(2) NOT NULL DEFAULT 1 COMMENT 'Estado de la celebracion: 1=Estandar, 2=Caso Especial, 0=Nulo'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -5351,7 +5351,3 @@ INSERT INTO `padrinos` (`IdPadri`, `IdInd`, `Nom`, `Ape`, `Sex`, `TipCelPad`) VA
 (1474, '19620625RN', 'Lucia', 'De Omaña', 2, 1),
 (1475, '19640530IA', 'Julian', 'Vivas Chacon', 1, 1),
 (1476, '19640530IA', 'Elide', 'Rujano', 2, 1);
-
-
-
-
