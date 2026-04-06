@@ -444,8 +444,8 @@ class SacrejController
 
         $data = file_get_contents($path);
         
-        // 🔹 GUARDAR IMAGEN EN BLOQUES (AÑO/MES)
-        $bloqueDir = 'view/images/actas/' . date('Y') . '/' . date('m') . '/';
+        // 🔹 GUARDAR IMAGEN EN CARPETA TEMPORAL (mientras está en JSON)
+        $bloqueDir = 'view/images/actas/temp/';
         if (!file_exists($bloqueDir)) {
             mkdir($bloqueDir, 0777, true);
         }
@@ -868,6 +868,61 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
     // 🔹 Función auxiliar para procesar un array de datos y guardarlo en BD
     private function _procesar_datos_bautizo($data) {
         
+        // 📂 LÓGICA DE ALMACENAMIENTO DEFINITIVO (De temp a Estructura de Libro/Folios)
+        if (!empty($data['RutaImagen'])) {
+            $rutaActual = $data['RutaImagen'];
+            
+            // Solo movemos si el archivo está actualmente en la carpeta temporal
+            if (strpos($rutaActual, 'actas/temp/') !== false) {
+                $numLib = preg_replace('/[^a-zA-Z0-9_-]/', '', $data['NumLib'] ?? '0');
+                $numFol = max(1, (int)($data['NumFol'] ?? 1));
+                
+                // Calcular rango de folios de 20 en 20 (Ej: 1-20, 21-40, 41-60...)
+                $inicio = floor(($numFol - 1) / 20) * 20 + 1;
+                $fin = $inicio + 19;
+                
+                $dirDestino = "view/images/actas/Libro_{$numLib}/Folios_{$inicio}_{$fin}/";
+                if (!file_exists($dirDestino)) {
+                    mkdir($dirDestino, 0777, true);
+                }
+                
+                $nombreArchivo = basename($rutaActual);
+                $nuevaRuta = $dirDestino . $nombreArchivo;
+                
+                if (file_exists($rutaActual)) {
+                    // Mover el archivo físicamente
+                    if (rename($rutaActual, $nuevaRuta)) {
+                        $oldPath = $rutaActual;
+                        $data['RutaImagen'] = $nuevaRuta; // Actualizar ruta para la BD
+                        
+                        // 🔄 SINCRONIZACIÓN: Si la imagen contenía varias actas, actualizamos las rutas
+                        // de los otros registros que aún están pendientes en el JSON.
+                        $archivoJson = 'pending_bautizos.json';
+                        if (file_exists($archivoJson)) {
+                            $content = file_get_contents($archivoJson);
+                            $pendientes = json_decode($content, true);
+                            if (is_array($pendientes)) {
+                                $cambios = false;
+                                foreach ($pendientes as &$p) {
+                                    if (isset($p['RutaImagen']) && $p['RutaImagen'] === $oldPath) {
+                                        $p['RutaImagen'] = $nuevaRuta;
+                                        $cambios = true;
+                                    }
+                                }
+                                if ($cambios) {
+                                    file_put_contents($archivoJson, json_encode($pendientes));
+                                }
+                            }
+                        }
+                    }
+                } elseif (file_exists($nuevaRuta)) {
+                    // Si ya no está en temp pero existe en el destino, es que un 
+                    // "hermano" (otra acta de la misma imagen) ya movió el archivo.
+                    $data['RutaImagen'] = $nuevaRuta;
+                }
+            }
+        }
+
         $individuo = [
             'NomInd'    => $data['NomInd'] ?? '',
             'ApeInd'    => $data['ApeInd'] ?? '',
