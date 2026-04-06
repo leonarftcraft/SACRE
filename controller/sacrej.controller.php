@@ -444,8 +444,8 @@ class SacrejController
 
         $data = file_get_contents($path);
         
-        // 🔹 GUARDAR IMAGEN EN CARPETA TEMPORAL (mientras está en JSON)
-        $bloqueDir = 'view/images/actas/temp/';
+        // 🔹 GUARDAR IMAGEN EN BLOQUES (AÑO/MES)
+        $bloqueDir = 'view/images/actas/' . date('Y') . '/' . date('m') . '/';
         if (!file_exists($bloqueDir)) {
             mkdir($bloqueDir, 0777, true);
         }
@@ -868,61 +868,6 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
     // 🔹 Función auxiliar para procesar un array de datos y guardarlo en BD
     private function _procesar_datos_bautizo($data) {
         
-        // 📂 LÓGICA DE ALMACENAMIENTO DEFINITIVO (De temp a Estructura de Libro/Folios)
-        if (!empty($data['RutaImagen'])) {
-            $rutaActual = $data['RutaImagen'];
-            
-            // Solo movemos si el archivo está actualmente en la carpeta temporal
-            if (strpos($rutaActual, 'actas/temp/') !== false) {
-                $numLib = preg_replace('/[^a-zA-Z0-9_-]/', '', $data['NumLib'] ?? '0');
-                $numFol = max(1, (int)($data['NumFol'] ?? 1));
-                
-                // Calcular rango de folios de 20 en 20 (Ej: 1-20, 21-40, 41-60...)
-                $inicio = floor(($numFol - 1) / 20) * 20 + 1;
-                $fin = $inicio + 19;
-                
-                $dirDestino = "view/images/actas/Libro_{$numLib}/Folios_{$inicio}_{$fin}/";
-                if (!file_exists($dirDestino)) {
-                    mkdir($dirDestino, 0777, true);
-                }
-                
-                $nombreArchivo = basename($rutaActual);
-                $nuevaRuta = $dirDestino . $nombreArchivo;
-                
-                if (file_exists($rutaActual)) {
-                    // Mover el archivo físicamente
-                    if (rename($rutaActual, $nuevaRuta)) {
-                        $oldPath = $rutaActual;
-                        $data['RutaImagen'] = $nuevaRuta; // Actualizar ruta para la BD
-                        
-                        // 🔄 SINCRONIZACIÓN: Si la imagen contenía varias actas, actualizamos las rutas
-                        // de los otros registros que aún están pendientes en el JSON.
-                        $archivoJson = 'pending_bautizos.json';
-                        if (file_exists($archivoJson)) {
-                            $content = file_get_contents($archivoJson);
-                            $pendientes = json_decode($content, true);
-                            if (is_array($pendientes)) {
-                                $cambios = false;
-                                foreach ($pendientes as &$p) {
-                                    if (isset($p['RutaImagen']) && $p['RutaImagen'] === $oldPath) {
-                                        $p['RutaImagen'] = $nuevaRuta;
-                                        $cambios = true;
-                                    }
-                                }
-                                if ($cambios) {
-                                    file_put_contents($archivoJson, json_encode($pendientes));
-                                }
-                            }
-                        }
-                    }
-                } elseif (file_exists($nuevaRuta)) {
-                    // Si ya no está en temp pero existe en el destino, es que un 
-                    // "hermano" (otra acta de la misma imagen) ya movió el archivo.
-                    $data['RutaImagen'] = $nuevaRuta;
-                }
-            }
-        }
-
         $individuo = [
             'NomInd'    => $data['NomInd'] ?? '',
             'ApeInd'    => $data['ApeInd'] ?? '',
@@ -1285,13 +1230,6 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
             echo json_encode(['status' => 'error', 'msg' => $e->getMessage()]);
         }
     }
-
-
-
-
-
-
-
 
 
     /* ============================================================
@@ -1986,6 +1924,129 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
 
     // Salida
     $pdf->Output("I", "certificado_$idCel.pdf");
+    exit;
+}
+
+
+public function generar_constancia_no_asentamiento()
+{
+    require "view/libs/fpdf/fpdf.php";
+
+    // Evitar errores de salida previa
+    if (ob_get_length()) {
+        ob_clean();
+    }
+
+    // =========================
+    // 📌 DATOS
+    // =========================
+    $nombre = $_POST['nombre'] ?? '';
+    $idUsu  = $_POST['idUsu'] ?? null;
+
+    // Limpiar + convertir a MAYÚSCULAS (UTF-8)
+    $nombre = mb_strtoupper(trim($nombre), 'UTF-8');
+
+    if (empty($nombre)) {
+        echo "Datos incompletos";
+        exit;
+    }
+
+    // =========================
+    // 👤 FIRMANTE
+    // =========================
+    $firmante = $this->model->obtener_usuario_por_id($idUsu);
+
+    $nombreFirmante = "PBRO. ROGER A. CACERES C.";
+    if ($firmante) {
+        $nombreFirmante = mb_strtoupper(
+            trim($firmante['NomUsu'] . " " . $firmante['ApeUsu']),
+            'UTF-8'
+        );
+    }
+
+    // =========================
+    // 📅 FECHA
+    // =========================
+    $meses = [
+        1 => 'enero', 2 => 'febrero', 3 => 'marzo', 4 => 'abril',
+        5 => 'mayo', 6 => 'junio', 7 => 'julio', 8 => 'agosto',
+        9 => 'septiembre', 10 => 'octubre', 11 => 'noviembre', 12 => 'diciembre'
+    ];
+
+    $tHoy = time();
+    $dHoy = date('d', $tHoy);
+    $mHoy = (int) date('n', $tHoy);
+    $aHoy = date('Y', $tHoy);
+
+    $fechaTexto = "$dHoy días del mes de " . ucfirst($meses[$mHoy]) . " del $aHoy";
+
+    // =========================
+    // 📄 PDF
+    // =========================
+    $pdf = new FPDF('P', 'mm', 'Letter');
+    $pdf->SetMargins(20, 15, 20);
+    $pdf->AddPage();
+
+    // 🖼️ Logo
+    $pdf->Image('view/images/logo_parroquia.jpg', 18, 15, 25);
+
+    // =========================
+    // 🏛️ ENCABEZADO
+    // =========================
+    $pdf->SetFont('Arial', 'B', 12);
+    $pdf->Cell(0, 5, utf8_decode('DIOCESIS DE SAN CRISTOBAL'), 0, 1, 'C');
+    $pdf->Cell(0, 5, utf8_decode('VICARIA LA ENCARNACION DEL SEÑOR'), 0, 1, 'C');
+    $pdf->Cell(0, 5, utf8_decode('PARROQUIA ECLESIASTICA "SAGRADO CORAZON DE JESUS"'), 0, 1, 'C');
+    $pdf->Cell(0, 5, utf8_decode('LA FRIA - ESTADO TACHIRA'), 0, 1, 'C');
+    $pdf->Cell(0, 5, utf8_decode('VENEZUELA'), 0, 1, 'C');
+    $pdf->Cell(0, 5, utf8_decode('(0277-5411823)'), 0, 1, 'C');
+
+    $pdf->Ln(20);
+
+    // =========================
+    // 🧾 TÍTULO
+    // =========================
+    $pdf->SetFont('Arial', 'B', 12);
+    $pdf->Cell(0, 6, utf8_decode('CONSTANCIA DE NO ASENTAMIENTO PARROQUIAL'), 0, 1, 'C');
+
+    // Línea decorativa
+    $pdf->Cell(0, 0, '', 'T', 1, 'C');
+    $pdf->Ln(40);
+
+    // =========================
+    // 📜 CUERPO
+    // =========================
+    $pdf->SetFont('Arial', '', 12);
+
+    $texto = "Quien suscribe el Pbro. $nombreFirmante, Párroco del SAGRADO CORAZÓN DE JESÚS de La Fría, Municipio García de Hevia del Estado Táchira, CERTIFICA que previa búsqueda minuciosa en los libros parroquiales no se encontró asentada en ningún libro la Fe de Bautismo de la persona: $nombre.";
+
+    $pdf->MultiCell(0, 6, utf8_decode($texto), 0, 'J');
+
+    $pdf->Ln(20);
+
+    $pdf->MultiCell(
+        0,
+        6,
+        utf8_decode("Constancia que se expide a solicitud del interesado a los $fechaTexto."),
+        0,
+        'J'
+    );
+
+    $pdf->Ln(40);
+
+    // =========================
+    // ✍️ FIRMA
+    // =========================
+    $pdf->SetFont('Arial', 'B', 11);
+    $pdf->Cell(0, 5, utf8_decode($nombreFirmante), 0, 1, 'C');
+
+    $pdf->SetFont('Arial', '', 11);
+    $pdf->Cell(0, 5, utf8_decode('PARROCO'), 0, 1, 'C');
+
+    // =========================
+    // 📤 SALIDA
+    // =========================
+    $pdf->Output("I", "constancia_no_asentamiento.pdf");
     exit;
 }
 

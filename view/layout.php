@@ -39,8 +39,59 @@ if (session_status() === PHP_SESSION_NONE) {
         ?>
     </main>
 
+    <div class="modal fade" id="modalConstancia" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+        <form method="POST" action="index.php?controller=sacrej&action=generar_constancia_no_asentamiento">
+
+            <div class="modal-header">
+            <h5 class="modal-title">Constancia de No Asentamiento</h5>
+            </div>
+
+            <div class="modal-body">
+
+            <!-- 👤 Ministro -->
+            <label>Ministro firmante</label>
+            <select name="idUsu" class="form-control" required>
+                <?php
+                $ministros = $this->model->obtener_ministros_firmantes();
+                while($m = $ministros->fetch_assoc()){
+                    echo "<option value='{$m['IdUsu']}'>
+                            {$m['NomUsu']} {$m['ApeUsu']}
+                            </option>";
+                }
+                ?>
+            </select>
+
+            <!-- 👶 Nombre -->
+            <label>Nombre completo</label>
+            <input type="text" name="nombre" class="form-control" required>
+
+
+            </div>
+                
+            <div class="modal-footer">
+            <button type="submit" class="btn btn-primary">
+                Generar PDF
+            </button>
+            </div>
+
+        </form>
+
+        </div>
+    </div>
+    </div>
+
     <!-- 🔸 Pie de página -->
     <?php require_once "view/footer.php"; ?>
+
+    <script>
+        function abrirConstancia() {
+            const modal = new bootstrap.Modal(document.getElementById('modalConstancia'));
+            modal.show();
+        }
+    </script>
 
 </body>
 </html>

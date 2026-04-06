@@ -58,6 +58,7 @@ $rolNombre = $roles[$rolId] ?? 'Invitado';
               <li><a class="dropdown-item" href="?controller=sacrej&action=vista_bautizos">Registrar Bautizo</a></li>
               <li><a class="dropdown-item" href="?controller=sacrej&action=vista_celebraciones_registradas">Celebraciones Registradas</a></li>
               <li><a class="dropdown-item" href="?controller=sacrej&action=vista_desplegar_server">Desplegar Server</a></li>
+              <li><a class="dropdown-item" href="#" onclick="abrirConstancia()">Constancia de no asentamiento</a></li>
             <?php elseif ($rolId == 40): ?>
               <li><a class="dropdown-item" href="#">Gestión de Clases</a></li>
             <?php elseif ($rolId == 50): ?>
