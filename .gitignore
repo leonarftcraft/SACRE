@@ -3,3 +3,16 @@
 
 # Archivos de configuración de Dansware
 /*.txt
+
+# Archivos de estado dinámico (no subir al repositorio)
+connected_clients.json
+pending_bautizos.json
+server_status.txt
+ia_toggle_debug.log
+
+# Archivos temporales del microservicio
+tools/AI_ser.pid
+tools/__pycache__/
+
+# Imágenes temporales
+view/images/actas/temp/
