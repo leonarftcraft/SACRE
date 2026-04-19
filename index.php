@@ -31,7 +31,7 @@ if (!isset($_REQUEST["controller"])) {
        🧩 Cargar controlador y acción solicitada
        ========================================================== */
     $controller = strtolower($_REQUEST["controller"]);
-    $accion = isset($_REQUEST["action"]) ? $_REQUEST["action"] : "index";
+    $accion = isset($_GET["action"]) ? $_GET["action"] : "index";
     $controllerPath = "controller/$controller.controller.php";
 
     if (!file_exists($controllerPath)) {

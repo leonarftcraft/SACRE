@@ -1,0 +1,49 @@
+2026-04-19 21:08:22 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:08:22 [api_toggle_ia_server] START command ejecutado: start /B "" "C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe
+C:\Users\leona\AppData\Local\Python\bin\python.exe" "C:\xampp\htdocs\SACRE\tools\AI_ser.py" > NUL 2>&1
+2026-04-19 21:08:29 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:08:29 [api_toggle_ia_server] START command ejecutado: start /B "" "C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe
+C:\Users\leona\AppData\Local\Python\bin\python.exe" "C:\xampp\htdocs\SACRE\tools\AI_ser.py" > NUL 2>&1
+2026-04-19 21:08:32 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:08:32 [api_toggle_ia_server] START command ejecutado: start /B "" "C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe
+C:\Users\leona\AppData\Local\Python\bin\python.exe" "C:\xampp\htdocs\SACRE\tools\AI_ser.py" > NUL 2>&1
+2026-04-19 21:09:08 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:09:08 [api_toggle_ia_server] START command ejecutado: start /B "" "C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe
+C:\Users\leona\AppData\Local\Python\bin\python.exe" "C:\xampp\htdocs\SACRE\tools\AI_ser.py" > NUL 2>&1
+2026-04-19 21:11:50 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:11:50 [api_toggle_ia_server] START command ejecutado: start /B "" "C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe
+C:\Users\leona\AppData\Local\Python\bin\python.exe" "C:\xampp\htdocs\SACRE\tools\AI_ser.py" > NUL 2>&1
+2026-04-19 21:12:07 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:12:07 [api_toggle_ia_server] START command ejecutado: start /B "" "C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe
+C:\Users\leona\AppData\Local\Python\bin\python.exe" "C:\xampp\htdocs\SACRE\tools\AI_ser.py" > NUL 2>&1
+2026-04-19 21:15:10 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:15:10 [api_toggle_ia_server] START command ejecutado: start /B "" "C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe
+C:\Users\leona\AppData\Local\Python\bin\python.exe" "C:\xampp\htdocs\SACRE\tools\AI_ser.py" > NUL 2>&1
+2026-04-19 21:15:23 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:15:23 [api_toggle_ia_server] START command ejecutado: start /B "" "C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe
+C:\Users\leona\AppData\Local\Python\bin\python.exe" "C:\xampp\htdocs\SACRE\tools\AI_ser.py" > NUL 2>&1
+2026-04-19 21:15:29 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:15:29 [api_toggle_ia_server] START command ejecutado: start /B "" "C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe
+C:\Users\leona\AppData\Local\Python\bin\python.exe" "C:\xampp\htdocs\SACRE\tools\AI_ser.py" > NUL 2>&1
+2026-04-19 21:19:41 [api_toggle_ia_server] service_action=stop uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:19:47 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:19:47 [api_toggle_ia_server] START command ejecutado: start /B "" "C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe
+C:\Users\leona\AppData\Local\Python\bin\python.exe" "C:\xampp\htdocs\SACRE\tools\AI_ser.py" > NUL 2>&1
+2026-04-19 21:23:45 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:23:49 [api_toggle_ia_server] START command ejecutado: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath 'C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe' -ArgumentList 'C:\xampp\htdocs\SACRE\tools\AI_ser.py' -WorkingDirectory 'C:\xampp\htdocs\SACRE\tools' -WindowStyle Hidden -PassThru | Select-Object -ExpandProperty Id" PID=20568
+2026-04-19 21:23:59 [api_toggle_ia_server] service_action=stop uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:24:00 [api_toggle_ia_server] STOP command ejecutado: PID=20568
+2026-04-19 21:24:06 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-19 21:24:06 [api_toggle_ia_server] START command ejecutado: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath 'C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe' -ArgumentList 'C:\xampp\htdocs\SACRE\tools\AI_ser.py' -WorkingDirectory 'C:\xampp\htdocs\SACRE\tools' -WindowStyle Hidden -PassThru | Select-Object -ExpandProperty Id" PID=9920
+2026-04-20 00:46:40 [api_toggle_ia_server] service_action=stop uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-20 00:46:40 [api_toggle_ia_server] STOP command ejecutado: PID=9920
+2026-04-20 00:46:44 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-20 00:46:45 [api_toggle_ia_server] START command ejecutado: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath 'C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe' -ArgumentList 'C:\xampp\htdocs\SACRE\tools\AI_ser.py' -WorkingDirectory 'C:\xampp\htdocs\SACRE\tools' -WindowStyle Hidden -PassThru | Select-Object -ExpandProperty Id" PID=20472
+2026-04-20 00:47:33 [api_toggle_ia_server] service_action=stop uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-20 00:47:34 [api_toggle_ia_server] STOP command ejecutado: PID=20472
+2026-04-20 01:15:31 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-20 01:15:35 [api_toggle_ia_server] START command ejecutado: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath 'C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe' -ArgumentList 'C:\xampp\htdocs\SACRE\tools\AI_ser.py' -WorkingDirectory 'C:\xampp\htdocs\SACRE\tools' -WindowStyle Hidden -PassThru | Select-Object -ExpandProperty Id" PID=13612
+2026-04-20 01:36:09 [api_toggle_ia_server] service_action=stop uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-20 01:36:09 [api_toggle_ia_server] STOP command ejecutado: PID=13612
+2026-04-20 01:36:36 [api_toggle_ia_server] service_action=start uri=/SACRE/index.php?controller=sacrej&action=api_toggle_ia_server method=POST
+2026-04-20 01:36:37 [api_toggle_ia_server] START command ejecutado: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath 'C:\Users\leona\AppData\Local\Microsoft\WindowsApps\python.exe' -ArgumentList 'C:\xampp\htdocs\SACRE\tools\AI_ser.py' -WorkingDirectory 'C:\xampp\htdocs\SACRE\tools' -WindowStyle Hidden -PassThru | Select-Object -ExpandProperty Id" PID=18844

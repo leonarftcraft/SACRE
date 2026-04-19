@@ -27,6 +27,14 @@
         <button class="btn btn-primary btn-big" onclick="conectarUsuario()">Entrar</button>
     </div>
 
+    <!-- PANTALLA DE ESPERA DE AUTORIZACIÓN -->
+    <div id="screen-wait" class="mobile-card hidden">
+        <div class="loader"></div>
+        <h4 class="mt-3">Esperando Autorización</h4>
+        <p class="text-muted small">El administrador debe permitir tu conexión desde el panel central para poder usar el sistema.</p>
+        <button class="btn btn-outline-danger mt-4" onclick="desconectar()">Cancelar / Salir</button>
+    </div>
+
     <!-- PANTALLA 2: CÁMARA -->
     <div id="screen-camera" class="mobile-card hidden">
         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -151,9 +159,14 @@
     <script src="view/js/sweetalert.js"></script>
     <script>
         let usuarioActual = "";
+        let estaProcesando = false; // ✅ Flag de estado
+        let avisoInactividadMostrado = false; // 🛡️ Evitar repetición del mensaje
         let libroActual = null;
         let folioActual = null;
         let rutaImagenActual = ""; // 🔹 Variable para guardar la ruta de la foto actual
+        let huboInteraccion = false; // ⚡ Flag para resetear inactividad
+        let paginaCerrandose = false; // 🛡️ Evitar latidos al salir
+        let heartbeatInterval = null; 
         
         // 🔹 Datos de ministros en JS para validación
         let ministrosData = [
@@ -189,6 +202,7 @@
         }
 
         function volverACamara() {
+            estaProcesando = false; // ✅ Liberar estado al volver
             $('#screen-form').addClass('hidden');
             $('#screen-camera').removeClass('hidden');
             $('#forms-container').empty(); // Limpiar formularios dinámicos
@@ -415,7 +429,7 @@
                     sessionStorage.setItem('usuario_sacra', nombre); // ✅ Guardar sesión
                     $('#userDisplay').text(usuarioActual);
                     $('#screen-login').addClass('hidden');
-                    $('#screen-camera').removeClass('hidden');
+                    $('#screen-wait').removeClass('hidden'); // Mostrar espera al conectar
                 } else {
                     // Si falla la reconexión (ej. servidor cerrado), limpiamos
                     if(esReconexion) sessionStorage.removeItem('usuario_sacra');
@@ -494,25 +508,33 @@
 
         // 🔹 Validación al pulsar el botón de cámara
         function abrirCamaraConValidacion() {
-            ejecutarSiServidorActivo(() => document.getElementById('cameraInput').click());
+            ejecutarSiServidorActivo(() => {
+                estaProcesando = true; // ✅ Iniciar estatus de procesamiento
+                document.getElementById('cameraInput').click();
+            });
         }
 
         // 🔹 NUEVA: Validación al pulsar el botón de galería
         function abrirGaleriaConValidacion() {
-            ejecutarSiServidorActivo(() => document.getElementById('galleryInput').click());
+            ejecutarSiServidorActivo(() => {
+                estaProcesando = true; // ✅ Iniciar estatus de procesamiento
+                document.getElementById('galleryInput').click();
+            });
         }
 
         function procesarImagen(input) { // MODIFICADO: recibe el input
             if (input.files && input.files[0]) {
                 const file = input.files[0];
                 
+                estaProcesando = true; // ✅ Activar estado de procesamiento
+
                 // Mostrar loader
                 $('#loader').removeClass('hidden');
                 $('#resultado').addClass('hidden').text('');
                 
                 const formData = new FormData();
                 formData.append('imagen', file);
-                formData.append('usuario', usuarioActual);
+                formData.append('usuario_envio', usuarioActual); // Ajustado para coincidir con la validación del controlador
 
                 $.ajax({
                     url: '?controller=sacrej&action=api_procesar_imagen',
@@ -520,8 +542,11 @@
                     data: formData,
                     contentType: false,
                     processData: false,
-                    success: function(res) {
+                    complete: function() {
                         $('#loader').addClass('hidden');
+                        estaProcesando = false; // ✅ Liberar: ya no estamos en el túnel de carga
+                    },
+                    success: function(res) {
                         
                         // 🔹 Adaptador para la nueva respuesta del controlador
                         let geminiRes = res;
@@ -681,6 +706,8 @@
                                     if(r.isConfirmed) {
                                         // Simular un acta vacía para abrir el formulario
                                         mostrarFormularios([{}]);
+                                    } else {
+                                        estaProcesando = false; // ✅ Liberar si cancela
                                     }
                                 });
                                 return; // Detener flujo automático
@@ -729,6 +756,7 @@
                         }
                     },
                     error: function() {
+                        estaProcesando = false; // ✅ Liberar si falla la subida
                         $('#loader').addClass('hidden');
                         Swal.fire('Error', 'Error de conexión al subir la imagen', 'error');
                     }
@@ -900,23 +928,73 @@
             $('#screen-form').removeClass('hidden');
         }
 
-        // 🔄 Polling: Latido (Heartbeat) cada 2 segundos
-        setInterval(function() {
-            // Solo verificar si el usuario ya está logueado (pantalla de cámara visible)
-            if (!usuarioActual) return;
+        function verificarEstadoLatido() {
+            if (!usuarioActual || paginaCerrandose) return;
 
-            // Enviamos el nombre para decir "Sigo aquí"
-            $.post('?controller=sacrej&action=api_heartbeat', { nombre: usuarioActual }, function(res) {
+            $.post('?controller=sacrej&action=api_heartbeat', { 
+                nombre: usuarioActual,
+                processing: String(estaProcesando),
+                active: String(huboInteraccion) // ⚡ Informar actividad al servidor
+            }, function(res) {
+                huboInteraccion = false; // Resetear flag
+
                 if (res.estado !== '1') {
-                    salirDelSistema('El servidor ha sido desactivado por el administrador.');
+                    salirDelSistema('El servidor ha sido desactivado.');
                 } else if (res.conectado === false) {
-                    salirDelSistema('Has sido desconectado por el administrador.');
+                    salirDelSistema('Has sido desconectado.');
+                } else {
+                    // 🔔 Mensaje de advertencia a los 4 minutos (240 segundos)
+                    if (res.inactividad >= 240 && !avisoInactividadMostrado) {
+                        avisoInactividadMostrado = true;
+                        Swal.fire({
+                            icon: 'warning',
+                            title: '¡Atención!',
+                            text: 'Tu sesión se cerrará en un minuto por inactividad.',
+                            timer: 4000,
+                            timerProgressBar: true,
+                            showConfirmButton: false
+                        });
+                    }
+                    
+                    // Resetear el flag si el usuario vuelve a tener actividad
+                    if (res.inactividad < 240) {
+                        avisoInactividadMostrado = false;
+                    }
+
+                    if (res.status === 'allowed') {
+                        $('#screen-wait').addClass('hidden');
+                        if ($('#screen-form').hasClass('hidden')) {
+                            $('#screen-camera').removeClass('hidden');
+                        }
+                    } else {
+                        $('#screen-camera').addClass('hidden');
+                        $('#screen-wait').removeClass('hidden');
+                    }
                 }
-            }, 'json');
-        }, 2000);
+            }, 'json').fail(function() {
+                console.warn("Fallo temporal de conexión...");
+            });
+        }
+
+        // 🔄 Polling cada 3 segundos (un poco más lento para ser más estable)
+        heartbeatInterval = setInterval(verificarEstadoLatido, 3000);
 
         // 🔹 Lógica del Formulario (Generación de ID y Envío)
         $(document).ready(function() {
+            // ⚡ Detectar actividad para resetear inactividad en el servidor
+            $(document).on('click input keydown change', function() {
+                huboInteraccion = true;
+            });
+
+            // ✅ Detectar si el usuario cancela la selección en el selector de archivos (Cámara/Galería)
+            // Esto captura el momento en que se cierra el diálogo sin elegir nada.
+            document.getElementById('cameraInput').addEventListener('cancel', () => {
+                estaProcesando = false;
+            });
+            document.getElementById('galleryInput').addEventListener('cancel', () => {
+                estaProcesando = false;
+            });
+
             let guardado = sessionStorage.getItem('usuario_sacra');
             if(guardado) {
                 $('#inputNombre').val(guardado);
@@ -971,6 +1049,53 @@
                 if (!allFormsValid) {
                     Swal.fire('Falta información', 'Por favor, complete todos los campos obligatorios.', 'warning');
                     return;
+                }
+
+                // --- 🧠 CÁLCULO DE CORRECCIONES PARA APRENDIZAJE IA (HILO OCULTO) ---
+                if (ultimaExtraccionIA) {
+                    let correcciones = [];
+                    forms.each(function() {
+                        const idx = $(this).data('index');
+                        const original = (Array.isArray(ultimaExtraccionIA)) ? (ultimaExtraccionIA[idx] || {}) : (ultimaExtraccionIA || {});
+                        const $f = $(this);
+                        let corActa = { "N°": $f.find('[name="IdCel"]').val() };
+                        let mod = false;
+                        
+                        // Normalizador de fechas para comparar DD/MM/YYYY
+                        const dmy = (d) => { if(!d) return ''; const p = d.split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d; };
+
+                        const check = (fName, iaK, isD = false) => {
+                            let valF = $f.find(`[name="${fName}"]`).val();
+                            if (isD) valF = dmy(valF);
+                            let valI = original[iaK];
+                            let cleanI = (valI === null || valI === 'null' || typeof valI === 'undefined') ? '' : String(valI).trim();
+                            if (String(valF).trim() !== cleanI && cleanI !== '') {
+                                corActa[iaK] = valF;
+                                mod = true;
+                            }
+                        };
+
+                        check('NomInd', 'Nombre del Bautizado');
+                        check('ApeInd', 'Apellido del Bautizado');
+                        check('NomPad', 'Nombre del Padre');
+                        check('ApePad', 'Apellido del Padre');
+                        check('NomMad', 'Nombre de la Madre');
+                        check('ApeMad', 'Apellido de la Madre');
+                        check('LugNacInd', 'Lugar de nacimiento');
+                        check('FecNacInd', 'Fecha de nacimiento', true);
+                        check('FechCel', 'Fecha de bautizo', true);
+                        check('NotMar', 'Observaciones');
+
+                        if (mod) correcciones.push(corActa);
+                    });
+
+                    if (correcciones.length > 0) {
+                        $.post('?controller=sacrej&action=api_registrar_correccion', {
+                            usuario_envio: usuarioActual,
+                            json_fix: JSON.stringify(correcciones),
+                            ia_raw: JSON.stringify(ultimaExtraccionIA)
+                        });
+                    }
                 }
 
                 $btn.data("sending", true).prop("disabled", true).text("Guardando...");

@@ -180,8 +180,8 @@ class SacrejController
             }
         }
 
-        // 🔹 VALIDAR LA LLAVE CON GEMINI ANTES DE GUARDAR
-        $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=$apiKey";
+        // 🔹 VALIDAR LA LLAVE CON GEMINI ANTES DE GUARDAR 
+        $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=$apiKey";
         $payload = [
             "contents" => [
                 ["parts" => [["text" => "Test"]]]
@@ -240,6 +240,9 @@ class SacrejController
     public function cambiar_estado_server()
     {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (ob_get_length()) ob_clean(); // 🧹 Limpiar basura previa
+            header('Content-Type: application/json');
+
             $nuevo_estado = $_POST['estado'] ?? '0';
             
             if (file_put_contents('server_status.txt', $nuevo_estado) === false) {
@@ -247,18 +250,168 @@ class SacrejController
                 exit;
             }
             
-            // Opcional: Limpiar lista de clientes al desactivar/activar
             if ($nuevo_estado == '0') {
-                file_put_contents('connected_clients.json', json_encode([]));
+                @file_put_contents('connected_clients.json', json_encode([]));
             }
 
             echo json_encode([
                 'success' => true, 
                 'estado' => $nuevo_estado,
-                'mensaje' => $nuevo_estado == '1' ? 'El servidor está ACTIVO' : 'El servidor está DESACTIVADO'
+                'mensaje' => ($nuevo_estado == '1' ? 'SERVIDOR ACTIVO' : 'SERVIDOR DESACTIVADO')
             ]);
             exit;
         }
+    }
+
+    public function api_toggle_ia_server()
+    {
+        if (ob_get_length()) ob_clean(); // 🧹 Limpiar cualquier salida previa
+        header('Content-Type: application/json; charset=utf-8');
+
+        $logFile = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'ia_toggle_debug.log';
+        $pidFile = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'tools' . DIRECTORY_SEPARATOR . 'AI_ser.pid';
+        $serviceAction = $_POST['service_action'] ?? '';
+        @file_put_contents($logFile, date('Y-m-d H:i:s') . " [api_toggle_ia_server] service_action={$serviceAction} uri={$_SERVER['REQUEST_URI']} method={$_SERVER['REQUEST_METHOD']}\n", FILE_APPEND);
+
+        $pythonCandidate = trim(shell_exec('where python 2>NUL')) ?: trim(shell_exec('where py 2>NUL'));
+        $pythonPath = '';
+        if ($pythonCandidate) {
+            $paths = array_filter(array_map('trim', preg_split('/\r?\n/', $pythonCandidate)));
+            if (!empty($paths)) {
+                $pythonPath = reset($paths);
+            }
+        }
+
+        if (empty($pythonPath)) {
+            $msg = 'No se encontró Python en el PATH de Windows. Instale Python o agregue python/py al PATH.';
+            @file_put_contents($logFile, date('Y-m-d H:i:s') . " [api_toggle_ia_server] ERROR: {$msg}\n", FILE_APPEND);
+            echo json_encode(['success' => false, 'mensaje' => $msg]);
+            exit;
+        }
+
+        $scriptPath = realpath(dirname(__DIR__) . DIRECTORY_SEPARATOR . 'tools' . DIRECTORY_SEPARATOR . 'AI_ser.py');
+        if (!$scriptPath || !file_exists($scriptPath)) {
+            $msg = 'No se encontró el script tools/AI_ser.py. Verifique la ruta.';
+            @file_put_contents($logFile, date('Y-m-d H:i:s') . " [api_toggle_ia_server] ERROR: {$msg}\n", FILE_APPEND);
+            echo json_encode(['success' => false, 'mensaje' => $msg]);
+            exit;
+        }
+
+        $pythonPath = trim($pythonPath);
+        $scriptPath = trim($scriptPath);
+        $workingDir = dirname($scriptPath);
+        $pythonPathEsc = str_replace('"', '\\"', $pythonPath);
+        $scriptPathEsc = str_replace('"', '\\"', $scriptPath);
+        $workingDirEsc = str_replace('"', '\\"', $workingDir);
+
+        if ($serviceAction === 'start') {
+            $powershellCandidate = trim(shell_exec('where powershell 2>NUL'));
+            $powershellPath = '';
+            if ($powershellCandidate) {
+                $powershellEntries = array_filter(array_map('trim', preg_split('/\r?\n/', $powershellCandidate)));
+                if (!empty($powershellEntries)) {
+                    $powershellPath = reset($powershellEntries);
+                }
+            }
+
+            if ($powershellPath) {
+                $powershellPathEsc = '"' . str_replace('"', '\\"', $powershellPath) . '"';
+                $psCommand = "Start-Process -FilePath '$pythonPath' -ArgumentList '$scriptPath' -WorkingDirectory '$workingDir' -WindowStyle Hidden -PassThru | Select-Object -ExpandProperty Id";
+                $comando = "$powershellPathEsc -NoProfile -WindowStyle Hidden -Command \"$psCommand\"";
+                $pid = trim(shell_exec($comando));
+
+                if (is_numeric($pid)) {
+                    file_put_contents($pidFile, $pid);
+                    @file_put_contents($logFile, date('Y-m-d H:i:s') . " [api_toggle_ia_server] START command ejecutado: {$comando} PID={$pid}\n", FILE_APPEND);
+                    echo json_encode(['success' => true, 'mensaje' => 'Microservicio SACRE-IA iniciado.']);
+                    exit;
+                }
+
+                @file_put_contents($logFile, date('Y-m-d H:i:s') . " [api_toggle_ia_server] WARNING: PowerShell start no devolvió PID. comando={$comando} salida={$pid}\n", FILE_APPEND);
+            }
+
+            // Fallback: usar start /B con cmd.exe
+            $pythonPathEsc = '"' . $pythonPath . '"';
+            $scriptPathEsc = '"' . $scriptPath . '"';
+            $comando = "start /B \"\" cmd /C \"cd /d \"$workingDir\" && $pythonPathEsc $scriptPathEsc\" > NUL 2>&1";
+            $process = @popen($comando, 'r');
+
+            if ($process === false) {
+                $msg = 'No se pudo iniciar el microservicio. Verifique permisos y que cmd.exe esté disponible.';
+                @file_put_contents($logFile, date('Y-m-d H:i:s') . " [api_toggle_ia_server] ERROR: {$msg} comando={$comando}\n", FILE_APPEND);
+                echo json_encode(['success' => false, 'mensaje' => $msg]);
+                exit;
+            }
+
+            pclose($process);
+            @file_put_contents($logFile, date('Y-m-d H:i:s') . " [api_toggle_ia_server] START command ejecutado: {$comando}\n", FILE_APPEND);
+            echo json_encode(['success' => true, 'mensaje' => 'Microservicio SACRE-IA iniciado.']);
+        } else if ($serviceAction === 'stop') {
+            $stopped = false;
+            if (file_exists($pidFile)) {
+                $pid = trim(file_get_contents($pidFile));
+                if (is_numeric($pid)) {
+                    @shell_exec("taskkill /F /PID $pid /T > NUL 2>&1");
+                    @unlink($pidFile);
+                    $stopped = true;
+                    @file_put_contents($logFile, date('Y-m-d H:i:s') . " [api_toggle_ia_server] STOP command ejecutado: PID={$pid}\n", FILE_APPEND);
+                }
+            }
+
+            if (!$stopped) {
+                $port = 5000;
+                $output = @shell_exec("netstat -ano | findstr :$port | findstr LISTENING");
+                if ($output) {
+                    $lines = explode("\n", trim($output));
+                    foreach ($lines as $line) {
+                        $parts = preg_split('/\s+/', trim($line), -1, PREG_SPLIT_NO_EMPTY);
+                        $pid = end($parts);
+                        if (!empty($pid) && is_numeric($pid)) {
+                            @shell_exec("taskkill /F /PID $pid /T > NUL 2>&1");
+                            $stopped = true;
+                            @file_put_contents($logFile, date('Y-m-d H:i:s') . " [api_toggle_ia_server] STOP command ejecutado: PID={$pid}\n", FILE_APPEND);
+                        }
+                    }
+                }
+            }
+
+            if ($stopped) {
+                echo json_encode(['success' => true, 'mensaje' => 'Servicio IA detenido correctamente.']);
+            } else {
+                echo json_encode(['success' => false, 'mensaje' => 'El microservicio no está corriendo.']);
+            }
+        } else {
+            echo json_encode(['success' => false, 'mensaje' => 'Acción no válida.']);
+        }
+        exit;
+    }
+
+    public function api_verificar_estado_ia()
+    {
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+
+        $pidFile = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'tools' . DIRECTORY_SEPARATOR . 'AI_ser.pid';
+        $activo = false;
+
+        if (file_exists($pidFile)) {
+            $pid = trim(file_get_contents($pidFile));
+            if (is_numeric($pid)) {
+                $processList = trim(shell_exec("tasklist /FI \"PID eq $pid\" 2>NUL"));
+                if (preg_match('/\b' . preg_quote($pid, '/') . '\b/', $processList)) {
+                    $activo = true;
+                }
+            }
+        }
+
+        if (!$activo) {
+            $port = 5000;
+            $output = @shell_exec("netstat -ano | findstr :$port | findstr LISTENING");
+            $activo = !empty($output);
+        }
+
+        echo json_encode(['activo' => $activo]);
+        exit;
     }
 
     public function api_verificar_estado()
@@ -282,12 +435,13 @@ class SacrejController
 
     public function api_registrar_cliente()
     {
-        header('Content-Type: application/json');
+        session_write_close(); // 🚀 Liberar sesión para evitar bloqueos
         
         // 1. Verificar si el servidor está ACTIVO
         $estado_server = file_exists('server_status.txt') ? trim(file_get_contents('server_status.txt')) : '0';
         if ($estado_server !== '1') {
-            echo json_encode(['success' => false, 'message' => 'El servidor está cerrado. Pida al administrador que lo active.']);
+            if (ob_get_length()) ob_clean();
+            echo json_encode(['success' => false, 'message' => 'El servidor está desactivado.']);
             exit;
         }
 
@@ -298,50 +452,123 @@ class SacrejController
         }
 
         $archivo = 'connected_clients.json';
-        $content = file_exists($archivo) ? file_get_contents($archivo) : '{}';
-        $clientes = json_decode($content, true);
-        if (!is_array($clientes)) $clientes = [];
+        clearstatcache(true, $archivo); // 🛡️ Limpiar cache de estado de archivo
+        // 🔒 Bloqueo de archivo para evitar corrupción
+        $fp = fopen($archivo, 'c+');
+        if (flock($fp, LOCK_EX)) {
+            rewind($fp); // 🛡️ Asegurar lectura desde el principio
+            // Leer todo el contenido sin depender de filesize() cacheado
+            $content = stream_get_contents($fp);
+            $content = ($content === false || trim($content) === '') ? '{}' : $content;
+            $clientes = json_decode($content, true) ?: [];
 
-        // Migración: Si el archivo tiene el formato antiguo (lista simple), lo convertimos
-        if (isset($clientes[0])) {
-            $temp = [];
-            foreach($clientes as $c) $temp[$c] = time();
-            $clientes = $temp;
+            // Migración segura
+            if (isset($clientes[0])) { $clientes = []; }
+            
+            // 🧹 Limpieza previa: Eliminar clientes que ya expiraron antes de verificar el nombre
+            $ahora = time();
+            $limite = 300; // 5 minutos de tolerancia
+            foreach ($clientes as $n => $d) {
+                $ls = is_array($d) ? ($d['last_seen'] ?? 0) : $d;
+                if (($ahora - $ls) > $limite) {
+                    unset($clientes[$n]);
+                }
+            }
+
+            // 🚫 VALIDACIÓN: Evitar nombres duplicados en tiempo real
+            if (isset($clientes[$nombre])) {
+                flock($fp, LOCK_UN);
+                fclose($fp);
+                if (ob_get_length()) ob_clean();
+                echo json_encode(['success' => false, 'message' => "El nombre '$nombre' ya está en uso por otro dispositivo conectado."]);
+                exit;
+            }
+
+            // Inicializamos con todos los campos necesarios para evitar el "reset" a 180
+            $clientes[$nombre] = [
+                'last_seen'     => time(), 
+                'last_activity' => time(), 
+                'status'        => 'pending',
+                'is_processing' => false
+            ];
+            
+            ftruncate($fp, 0);
+            rewind($fp);
+            fwrite($fp, json_encode($clientes));
+            fflush($fp);
+            flock($fp, LOCK_UN);
         }
-        
-        // Guardamos nombre y HORA actual (timestamp)
-        $clientes[$nombre] = time();
-        file_put_contents($archivo, json_encode($clientes));
+        fclose($fp);
 
+        if (ob_get_length()) ob_clean();
         echo json_encode(['success' => true]);
         exit;
     }
 
     public function api_desconectar_cliente()
     {
-        header('Content-Type: application/json');
+        session_write_close();
         $nombre = $_POST['nombre'] ?? '';
         
         if (!empty($nombre)) {
             $archivo = 'connected_clients.json';
-            $content = file_exists($archivo) ? file_get_contents($archivo) : '{}';
-            $clientes = json_decode($content, true);
-            
-            // Manejo formato antiguo
-            if (is_array($clientes) && isset($clientes[0])) {
-                if (($key = array_search($nombre, $clientes)) !== false) {
-                    unset($clientes[$key]);
-                    $clientes = array_values($clientes);
-                }
-            } elseif (is_array($clientes)) {
-                // Formato nuevo (asociativo)
+            clearstatcache(true, $archivo);
+            $fp = fopen($archivo, 'c+');
+            if (flock($fp, LOCK_EX)) {
+                rewind($fp);
+                $content = stream_get_contents($fp) ?: '{}';
+                $clientes = json_decode($content, true) ?: [];
+
                 if (isset($clientes[$nombre])) {
                     unset($clientes[$nombre]);
+                    ftruncate($fp, 0);
+                    rewind($fp);
+                    fwrite($fp, json_encode($clientes));
+                    fflush($fp);
                 }
+                flock($fp, LOCK_UN);
             }
-            file_put_contents($archivo, json_encode($clientes));
+            fclose($fp);
         }
         echo json_encode(['success' => true]);
+        exit;
+    }
+
+    // ✅ Nueva función para que el Admin permita un dispositivo
+    public function api_permitir_cliente()
+    {
+        session_write_close();
+        $nombre = $_POST['nombre'] ?? '';
+        $archivo = 'connected_clients.json';
+        clearstatcache(true, $archivo);
+        $success = false;
+
+        $fp = fopen($archivo, 'c+');
+        if (flock($fp, LOCK_EX)) {
+            rewind($fp);
+            $content = stream_get_contents($fp) ?: '{}';
+            $clientes = json_decode($content, true) ?: [];
+            
+            if (isset($clientes[$nombre])) {
+                $clientes[$nombre]['status'] = 'allowed';
+                $clientes[$nombre]['is_processing'] = false; // 🛡️ Forzar booleano false
+                $clientes[$nombre]['last_activity'] = time(); // 🚀 Reiniciar timer al permitir
+                
+                ftruncate($fp, 0);
+                rewind($fp);
+                fwrite($fp, json_encode($clientes));
+                fflush($fp);
+                $success = true;
+            }
+            flock($fp, LOCK_UN);
+        }
+        fclose($fp);
+
+        if ($success) {
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Cliente no encontrado']);
+        }
         exit;
     }
 
@@ -351,33 +578,52 @@ class SacrejController
         session_write_close(); // 🚀 Liberar sesión para no bloquear otros procesos
         header('Content-Type: application/json');
         $nombre = $_POST['nombre'] ?? '';
+        // 🛡️ Detección estricta: solo es true si el móvil envía literalmente la cadena "true"
+        $is_processing = isset($_POST['processing']) && $_POST['processing'] === 'true';
+        $user_active = isset($_POST['active']) && $_POST['active'] === 'true';
+        
         $conectado = false;
+        $status = 'pending';
+        $inactividad = 0;
 
         if (!empty($nombre)) {
             $archivo = 'connected_clients.json';
-            $content = file_exists($archivo) ? file_get_contents($archivo) : '{}';
-            $clientes = json_decode($content, true);
-            if (!is_array($clientes)) $clientes = [];
+            clearstatcache(true, $archivo);
+            $fp = fopen($archivo, 'c+');
+            if (flock($fp, LOCK_EX)) {
+                rewind($fp);
+                $content = stream_get_contents($fp) ?: '{}';
+                $clientes = json_decode($content, true) ?: [];
 
-            // Si es formato antiguo, convertir
-            if (isset($clientes[0])) {
-                $temp = [];
-                foreach($clientes as $c) $temp[$c] = time();
-                $clientes = $temp;
-            }
+                if (isset($clientes[$nombre])) {
+                    $clientes[$nombre]['last_seen'] = time();
+                    $clientes[$nombre]['is_processing'] = (bool)$is_processing; // 🛡️ Guardar como booleano real
+                    $status = $clientes[$nombre]['status'] ?? 'pending';
 
-            // Actualizar la hora de "última vez visto" SOLO si ya existe en la lista
-            // Esto permite que si el admin lo borra, el cliente se entere y se desconecte
-            if (isset($clientes[$nombre])) {
-                $clientes[$nombre] = time();
-                file_put_contents($archivo, json_encode($clientes));
-                $conectado = true;
+                    // 🚀 Reiniciar el timer si está cargando IA, está en espera, o si el usuario interactuó
+                    if ($is_processing || $status === 'pending' || $user_active) {
+                        $clientes[$nombre]['last_activity'] = time();
+                    }
+                    
+                    // 🕒 Calcular inactividad acumulada para informar al móvil
+                    $ls_fallback = $clientes[$nombre]['last_seen'];
+                    $inactividad = time() - ($clientes[$nombre]['last_activity'] ?? $ls_fallback);
+                    
+                    $conectado = true;
+
+                    ftruncate($fp, 0);
+                    rewind($fp);
+                    fwrite($fp, json_encode($clientes));
+                    fflush($fp);
+                }
+                flock($fp, LOCK_UN);
             }
+            fclose($fp);
         }
 
         // Devolvemos el estado del server para que el móvil sepa si debe salir
         $estado = file_exists('server_status.txt') ? trim(file_get_contents('server_status.txt')) : '0';
-        echo json_encode(['estado' => $estado, 'conectado' => $conectado]);
+        echo json_encode(['estado' => $estado, 'conectado' => $conectado, 'status' => $status, 'inactividad' => $inactividad]);
         exit;
     }
 
@@ -385,51 +631,77 @@ class SacrejController
     {
         header('Content-Type: application/json');
         $archivo = 'connected_clients.json';
-        $content = file_exists($archivo) ? file_get_contents($archivo) : '{}';
-        $clientes = json_decode($content, true);
-        if (!is_array($clientes)) $clientes = [];
-
-        // Si es formato antiguo, devolverlo tal cual (se arreglará en el próximo registro/heartbeat)
-        if (isset($clientes[0])) {
-            echo json_encode($clientes);
-            exit;
-        }
-
-        // 🧹 LIMPIEZA AUTOMÁTICA
-        // Si un cliente no ha dado señal en 5 segundos, lo borramos
+        clearstatcache(true, $archivo);
+        $clientes = [];
         $ahora = time();
-        $limite = 30; // segundos de tolerancia (aumentado para evitar desconexiones durante cargas lentas)
-        $cambios = false;
+        $limite = 300; // 5 minutos
 
-        foreach ($clientes as $nombre => $ultimoVisto) {
-            if (($ahora - $ultimoVisto) > $limite) {
-                unset($clientes[$nombre]);
-                $cambios = true;
+        // 🔒 Lectura segura con bloqueo
+        if (file_exists($archivo)) {
+            $fp = fopen($archivo, 'c+');
+            if (flock($fp, LOCK_EX)) {
+                rewind($fp);
+                $content = stream_get_contents($fp) ?: '{}';
+                $clientes = json_decode($content, true) ?: [];
+
+                $cambios = false;
+                foreach ($clientes as $nombre => $data) {
+                    // 🛡️ Limpiar basado en INACTIVIDAD (last_activity) y no solo en conexión
+                    $last_seen = is_array($data) ? ($data['last_seen'] ?? 0) : 0;
+                    $last_act  = is_array($data) ? ($data['last_activity'] ?? $last_seen) : $last_seen;
+                    if (($ahora - $last_act) >= $limite) {
+                        unset($clientes[$nombre]);
+                        $cambios = true;
+                    }
+                }
+
+                if ($cambios) {
+                    ftruncate($fp, 0);
+                    rewind($fp);
+                    fwrite($fp, json_encode($clientes));
+                }
+                flock($fp, LOCK_UN);
             }
+            fclose($fp);
         }
 
-        if ($cambios) {
-            file_put_contents($archivo, json_encode($clientes));
+        // Devolver nombres y estados
+        $lista = [];
+        foreach($clientes as $n => $d) {
+            // Importante: si no hay last_activity, usamos last_seen en vez de 'ahora' para evitar el reset a 180
+            $ls_fallback = is_array($d) ? ($d['last_seen'] ?? $ahora) : $d;
+            $last_act = is_array($d) ? ($d['last_activity'] ?? $ls_fallback) : $ls_fallback;
+            $is_proc = is_array($d) ? ($d['is_processing'] ?? false) : false;
+            $lista[] = [
+                'nombre' => $n, 
+                'status' => is_array($d) ? ($d['status'] ?? 'pending') : 'allowed',
+                'inactividad' => $ahora - $last_act, // Tiempo transcurrido (aumentando)
+                'processing' => $is_proc
+            ];
         }
-
-        // Devolver solo los nombres (las claves del array)
-        echo json_encode(array_keys($clientes));
+        echo json_encode($lista);
         exit;
     }
 
     public function api_procesar_imagen()
     {
-        // 🛑 IMPORTANTE: Cerrar sesión para liberar el archivo y permitir que
-        // el heartbeat (latido) siga funcionando mientras se procesa la imagen.
-        session_write_close();
+        session_write_close(); // 🚀 Liberar sesión de inmediato para permitir heartbeats
 
         if (ob_get_length()) ob_clean(); // 🔹 Limpiar buffer para evitar JSON corrupto
         header('Content-Type: application/json');
+
+        $nombreCliente = $_POST['usuario_envio'] ?? '';
+        $archivoClientes = 'connected_clients.json';
+        $clientes = json_decode(file_exists($archivoClientes) ? file_get_contents($archivoClientes) : '{}', true);
 
         // 1. Verificar estado del servidor
         $estado_server = file_exists('server_status.txt') ? trim(file_get_contents('server_status.txt')) : '0';
         if ($estado_server !== '1') {
             echo json_encode(['error' => 'El sistema está desactivado por el administrador.']);
+            exit;
+        }
+        if (!isset($clientes[$nombreCliente]) || ($clientes[$nombreCliente]['status'] ?? 'pending') !== 'allowed') {
+            echo json_encode(['error' => 'No tiene permisos para procesar imágenes. Espere la autorización del administrador.']);
             exit;
         }
 
@@ -469,181 +741,86 @@ class SacrejController
         }
         $ministrosString = implode(", ", $listaMinistros);
 
-        $prompt = 'Realiza una extracción de texto de la imagen proporcionada mediante un análisis exhaustivo carácter por carácter (OCR de alta precisión). La imagen contiene una o más actas de Fe de Bautismo. Debes identificar cada letra, número y carácter especial, considerando caligrafía antigua o manuscrita.
+        $instruccionesOCR = 'Realiza una extracción de texto de la imagen proporcionada mediante un análisis exhaustivo carácter por carácter (OCR de alta precisión). La imagen contiene una o más actas de Fe de Bautismo. Debes identificar cada letra, número y carácter especial, considerando caligrafía antigua o manuscrita.
 
 Antes de comenzar la transcripción, lee todas las instrucciones a continuación y aplícalas rigurosamente.
 
 ## Instrucciones paso a paso:
 
-    - **Diferenciación de letras confusas:** Presta especial atención a la distinción entre \'B\' y \'D\' mayúsculas. La \'B\' suele tener un trazo inicial con base más ancha o una conexión específica con la siguiente letra, mientras que la \'D\' tiene un bucle superior único.
-    - **Regla para la \'S\' sola:** Ignora cualquier \'S\' que se aparezca a un & y que este sola no la incluyas en la transcripción.
-    - **Fidelidad de datos:** Mantén la ortografía, acentuación y abreviaturas exactas del documento original (ej. si dice "Bautizé", no lo corrijas a "Bauticé"). Si un dato no es legible o no existe, usa `null`.
+    - **Diferenciación de letras confusas:** Presta especial atención a la distinción entre \'B\' y \'D\' mayúsculas.
+    - **Regla para la \'S\' sola:** Ignora cualquier \'S\' que se aparezca a un & y que esté sola.
+    - **Fidelidad de datos:** Mantén la ortografía, acentuación y abreviaturas exactas del documento original. Si un dato no es legible o no existe, usa `null`.
 **Control sobre Fechas:**
-Las fechas extraidas deben de ser interpretadas en formato DD/MM/YYYY. 
+Las fechas extraídas deben ser interpretadas en formato DD/MM/YYYY. 
 **Control sobre todas las claves:**
-Si alguna clave no la encuentras en la iamgen ponle null.  
+Si alguna clave no la encuentras en la imagen ponle null.  
 **Cuando extraigas la clave N° extrae el numero sin "." y ","**
- **Control sobre la clave Filiacion:**
- Analiza el texto de la filiación y asigna el valor numérico correspondiente según estas opciones (si el texto significa lo mismo, usa el número): si no encuentras filiacion ponle null
- - "Reconocido" -> "Reconocido"
- - "Legítimo" -> "Legítimo"
- - "Natural" -> "Natural"
- - "Ilegítimo" -> "Ilegítimo"
- - "No reconocido" -> "No reconocido"
+ **Control sobre la clave Filiacion:** Analiza y asigna: "Reconocido", "Legítimo", "Natural", "Ilegítimo" o "No reconocido".
 **Control Folio N°:**
-El folio N. lo puedes encontrar como folio o como un numero en la parte superio de la imagen.
-- **instrucciones para extraer la clave: Observaciones:** para esta clave: limitate a extraer exactamente lo que te digo, debajo del codigo de celebracion que en la imagen se identifica con "N°" puedes encontrar un texto puede ser un nombre y apellido  puedes tomarlo como Observaciones, ese texto es el que debes colocar en la clave Observaciones y si en la imagen en la clave observaciones hay algo concatena las dos observaciones.
+El folio N. lo puedes encontrar como folio o como un número en la parte superior.
 **Estructura de los datos:**
-    La imagen puede contener una o más Fe de Bautismo. Devuelve SIEMPRE un arreglo JSON `[...]` que contenga un objeto por cada acta encontrada. No devuelvas un objeto raíz, sino la lista directamente. Devuelve únicamente el JSON, sin explicaciones ni bloques de código markdown.
+    Devuelve SIEMPRE un arreglo JSON `[...]`.
 
     ```json
-    [
-      {
-      "Nombre del Bautizado": "",
-      "Apellido del Bautizado": "",
-      "Nombre del Padre": "",
-      "Apellido del Padre": "",
-      "Nombre de la Madre": "",
-      "Apellido de la Madre": "",
-      "Filiacion": "",
-      "Lugar de nacimiento": "",
-      "Fecha de nacimiento": "",
-      "Fecha de bautizo": "",
-      "Nombre de la Madrina": "",
-      "Apellido de la madrina": "",
-      "Nombre del Padrino": "",
-      "Apellido del Padrino": "",
-      "Ministro": "",
-      "N°": "",
-      "Folio N°": "",
-      "Observaciones": "",
-      "Observaciones2": "",
-      "Registro Civil": ""
-      }
-    ]
+    [{"Nombre del Bautizado":"","Apellido del Bautizado":"","Nombre del Padre":"","Apellido del Padre":"","Nombre de la Madre":"","Apellido de la Madre":"","Filiacion":"","Lugar de nacimiento":"","Fecha de nacimiento":"","Fecha de bautizo":"","Nombre de la Madrina":"","Apellido de la madrina":"","Nombre del Padrino":"","Apellido del Padrino":"","Ministro":"","N°":"","Folio N°":"","Observaciones":"","Registro Civil":""}]
     ```
 
-    (' . $ministrosString . ') la clave ministro la vas a comparar con estos nombres si considera que es el mismo nombre o mismo ministro de esta lista vas a usar tal cual el nombre que esta en la lista. si no esta en la lista vas a ponerlo tal cual lo extragistes.';
+    Ministros autorizados: (' . $ministrosString . ').';
 
+        // 4. Obtener API Key
+        $keysGuardadas = $this->_leer_api_keys();
+        $apiKey = !empty($keysGuardadas) ? reset($keysGuardadas)['key'] : '';
+        if (empty($apiKey)) { echo json_encode(['error' => 'No hay llaves API disponibles.']); exit; }
+
+        // 🐍 LLAMADA AL MICROSERVICIO PYTHON (Usamos 127.0.0.1 para evitar fallos de resolución de DNS local)
+        $url = "http://127.0.0.1:5000/process";
         $payload = [
-            "contents" => [
-                [
-                    "parts" => [
-                        ["text" => $prompt],
-                        [
-                            "inline_data" => [
-                                "mime_type" => $type,
-                                "data" => $base64
-                            ]
-                        ]
-                    ]
-                ]
-            ]
+            "client_id" => $nombreCliente,
+            "api_key"   => $apiKey,
+            "prompt"    => $instruccionesOCR,
+            "image"     => $base64
         ];
 
-        // 3. Obtener llaves y preparar ciclo de intentos (Fallback)
-        $keysGuardadas = $this->_leer_api_keys();
-        $keysToTry = [];
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 120); 
 
-        if (!empty($keysGuardadas)) {
-            $allKeys = array_values($keysGuardadas);
-            $numKeys = count($allKeys);            
-
-            // 🔹 Lógica de cola (Round-Robin) con bloqueo de archivo para concurrencia
-            $iteratorFile = 'api_key_iterator.txt';
-            $fp = fopen($iteratorFile, 'c+'); // 'c+' crea si no existe, y posiciona al inicio
-
-            if (flock($fp, LOCK_EX)) { // 🔹 Bloqueo exclusivo para escritura
-                $currentIndex = (int)fread($fp, 1024); // Leer contenido actual
-
-                // Asegurarse que el índice esté dentro de los límites
-                if ($currentIndex >= $numKeys) {
-                    $currentIndex = 0;
-                }
-
-                // Reordenar el array para que la llave actual sea la primera
-                $part2 = array_slice($allKeys, $currentIndex);
-                $part1 = array_slice($allKeys, 0, $currentIndex);
-                $keysToTry = array_merge($part2, $part1);
-
-                // Actualizar el índice para la SIGUIENTE petición
-                $nextIndex = ($currentIndex + 1) % $numKeys;
-                
-                ftruncate($fp, 0);      // Vaciar archivo
-                rewind($fp);            // Mover puntero al inicio
-                fwrite($fp, $nextIndex); // Escribir nuevo índice
-                
-                flock($fp, LOCK_UN); // 🔹 Liberar bloqueo
-            } else {
-                // Si por alguna razón no se puede obtener el bloqueo, usar una llave aleatoria como fallback
-                $keysToTry = $allKeys;
-                shuffle($keysToTry);
-            }
-            fclose($fp);
-        } else {
-            // Llave por defecto si no hay registradas
-            $keysToTry[] = [
-                'email' => 'Sistema (Default)',
-                'key' => 'TU_API_KEY_DE_RESPALDO_AQUI'
-            ];
-        }
-
-        $lastError = "No se pudo procesar la solicitud.";
-        $lastEmail = "";
-        $success = false;
-        $finalResponse = "";
-
-        foreach ($keysToTry as $kData) {
-            $apiKey = $kData['key'];
-            $email = $kData['email'];
-            
-            $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=$apiKey";
-
-            $ch = curl_init($url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-            
-            $response = curl_exec($ch);
-            $curlErrno = curl_errno($ch);
-            $curlError = curl_error($ch);
+        $response = curl_exec($ch);
+        if (curl_errno($ch)) {
+            $err = curl_error($ch);
             curl_close($ch);
+            echo json_encode(['error' => "Servicio IA no disponible. Asegúrate de ejecutar 'python tools/AI_ser.py'. Detalle: $err"]);
+            
+            // 🛡️ Si hay error de conexión, avisamos específicamente
+            $msg = (strpos($err, '5000') !== false) 
+                ? "Error: El microservicio SACRE-IA no está respondiendo en el puerto 5000."
+                : "Error de comunicación con la IA: $err";
+            echo json_encode(['error' => $msg]);
+            exit;
+        }
+        curl_close($ch);
 
-            if ($curlErrno) {
-                $lastError = "Error de conexión: " . $curlError;
-                $lastEmail = $email;
-                continue; // Intentar siguiente llave
-            }
-
-            $jsonRes = json_decode($response, true);
-
-            // Si hay error explícito en el JSON (ej. quota exceeded, key invalid)
-            if (isset($jsonRes['error'])) {
-                $lastError = $jsonRes['error']['message'] ?? "Error desconocido de API";
-                $lastEmail = $email;
-                continue; // Intentar siguiente llave
-            }
-
-            // Éxito
-            $success = true;
-            $finalResponse = $response;
-            break; // Salir del ciclo
+        $jsonRes = json_decode($response, true);
+        
+        if (!$jsonRes || (isset($jsonRes['status']) && $jsonRes['status'] === 'error')) {
+            $msg = $jsonRes['message'] ?? 'Error de conexión con el servicio Python.';
+            echo json_encode(['error' => $msg]);
+            exit;
         }
 
-        if ($success) {
-            // Decodificamos la respuesta de Gemini para envolverla junto con la ruta
-            $geminiData = json_decode($finalResponse, true);
-            echo json_encode([
-                'gemini_data' => $geminiData,
-                'image_path' => $rutaFinal
-            ]);
-        } else {
-            // Fallaron todas
-            echo json_encode([
-                'error' => "Fallo con todas las llaves. Último intento ($lastEmail): $lastError"
-            ]);
-        }
+        // Adaptar la respuesta de Python para que sea compatible con el frontend móvil
+        $geminiData = [
+            'candidates' => [['content' => ['parts' => [['text' => $jsonRes['response']]]]]]
+        ];
+
+        // Éxito: Enviar respuesta de Gemini y la ruta de la imagen guardada
+        echo json_encode([
+            'gemini_data' => $geminiData,
+            'image_path' => $rutaFinal
+        ]);
         exit;
     }
 
@@ -1085,6 +1262,9 @@ El folio N. lo puedes encontrar como folio o como un numero en la parte superio 
             $resultado = $this->model->verificar_usuario($usuario, $contrasena);
 
             if ($resultado) {
+                // 🔒 Resetear servidor por seguridad al loguearse
+                @file_put_contents('server_status.txt', '0');
+
                 $_SESSION['IdUsu'] = $resultado['IdUsu'];
                 $_SESSION['Usuario'] = $resultado['Usuario'];
                 $_SESSION['NomUsu'] = $resultado['NomUsu'];

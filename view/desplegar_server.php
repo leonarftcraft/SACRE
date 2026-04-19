@@ -16,6 +16,11 @@
                 <?= $estado_server == '1' ? 'Desactivar Server' : 'Activar Server' ?>
             </button>
 
+            <!-- 🤖 Botón Servicio IA -->
+            <button id="btnIA" class="btn btn-lg btn-success ms-2" onclick="toggleIA()">
+                Activar Servicio de IA
+            </button>
+
             <!-- 🔹 SECCIÓN DE CONEXIÓN MÓVIL -->
             <div class="mt-4 pt-3 border-top">
                 <h5 class="text-secondary">📡 Conexión para Móviles</h5>
@@ -104,11 +109,12 @@
                         <table class="table table-bordered mb-0">
                             <thead class="table-light sticky-top">
                                 <tr>
-                                    <th>Nombre Completo</th>
+                                    <th>Dispositivo</th>
+                                    <th class="text-center">Inactividad</th>
                                 </tr>
                             </thead>
                             <tbody id="tablaClientesConectados">
-                                <tr><td class="text-muted text-center">Esperando conexiones...</td></tr>
+                                <tr><td colspan="2" class="text-muted text-center">Esperando conexiones...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -400,29 +406,74 @@ function enviarWhatsapp() {
 
 // 🔹 Lógica para actualizar lista de clientes conectados (Polling)
 function actualizarClientes() {
-    $.get('?controller=sacrej&action=api_obtener_clientes', function(clientes) {
+    $.ajax({
+        url: '?controller=sacrej&action=api_obtener_clientes',
+        type: 'GET',
+        cache: false, // 🛡️ IMPORTANTE: Evita que el navegador cachee el estado anterior
+        dataType: 'json',
+        success: function(clientes) {
         let html = '';
         if (clientes && clientes.length > 0) {
             clientes.forEach(c => {
+                // Si el status es 'pending', mostramos el botón permitir
+                let btnPermitir = (c.status === 'pending') 
+                    ? `<button class="btn btn-sm btn-success py-0 me-2" onclick="permitirCliente('${c.nombre}')">Permitir</button>` 
+                    : '<span class="badge bg-light text-primary me-2"><i class="bi bi-check-circle"></i> OK</span>';
+
+                // Cálculo de color de inactividad
+                let segs = c.inactividad;
+                // Rojo al acercarse a los 300s (5 min), amarillo después de los 180s (3 min)
+                let colorSec = segs > 240 ? 'text-danger' : (segs > 180 ? 'text-warning' : 'text-success');
+
+                // Formatear a minutos:segundos
+                let mins = Math.floor(segs / 60);
+                let restoSegs = segs % 60;
+                let tiempoFormat = mins + ":" + (restoSegs < 10 ? '0' : '') + restoSegs;
+
+                // 📋 Lógica de etiquetas de estado
+                let etiquetaEstado = "";
+                if (c.status === 'pending') etiquetaEstado = "En espera";
+                else if (c.processing === true || c.processing === "true") etiquetaEstado = "Procesando...";
+
+                let contenidoInactividad = (etiquetaEstado !== "") 
+                    ? `<span class="badge bg-primary w-100 animate-pulse-slow">${etiquetaEstado}</span>` 
+                    : `<small class="fw-bold ${colorSec}">${tiempoFormat}</small>`;
+
                 html += `<tr>
                     <td class="d-flex justify-content-between align-items-center">
-                        <span>🟢 ${c}</span>
-                        <button class="btn btn-sm btn-outline-danger" onclick="desconectarCliente('${c}')" title="Desconectar">
-                            ❌
-                        </button>
+                        <span>🟢 ${c.nombre}</span>
+                        <div>
+                            ${btnPermitir}
+                            <button class="btn btn-sm btn-outline-danger py-0" onclick="desconectarCliente('${c.nombre}')" title="Desconectar">
+                                ❌
+                            </button>
+                        </div>
+                    </td>
+                    <td class="text-center align-middle">
+                        ${contenidoInactividad}
                     </td>
                 </tr>`;
             });
         } else {
-            html = '<tr><td class="text-muted text-center">Esperando conexiones...</td></tr>';
+            html = '<tr><td colspan="2" class="text-muted text-center">Esperando conexiones...</td></tr>';
         }
         $('#tablaClientesConectados').html(html);
-    }, 'json');
+        }
+    });
 }
 
-// Actualizar cada 2 segundos
-setInterval(actualizarClientes, 2000);
+// ✅ Actualizar cada 1 segundo para que el contador baje de 1 en 1
+setInterval(actualizarClientes, 1000);
 actualizarClientes(); // Primera carga inmediata
+
+// ✅ Función para autorizar al dispositivo
+function permitirCliente(nombre) {
+    $.post('?controller=sacrej&action=api_permitir_cliente', { nombre: nombre }, function(res) {
+        if (res.success) {
+            actualizarClientes();
+        }
+    }, 'json');
+}
 
 function desconectarCliente(nombre) {
     Swal.fire({
@@ -624,6 +675,59 @@ function guardarEdicionPendiente() {
     }, 'json');
 }
 
+// 🤖 Lógica para el botón Servicio IA
+let iaActiva = false;
+
+function actualizarBotonIA(activo) {
+    iaActiva = activo;
+    const btn = $('#btnIA');
+    if (iaActiva) {
+        btn.text('Desactivar servicio de IA').removeClass('btn-secondary btn-success').addClass('btn-danger');
+    } else {
+        btn.text('Activar Servicio de IA').removeClass('btn-danger btn-secondary').addClass('btn-success');
+    }
+}
+
+function verificarEstadoIA() {
+    $.get('index.php?controller=sacrej&action=api_verificar_estado_ia', function(res) {
+        actualizarBotonIA(res.activo);
+    }, 'json');
+}
+
+function toggleIA() {
+    const action = iaActiva ? 'stop' : 'start';
+    const btn = $('#btnIA');
+    btn.prop('disabled', true).text('Procesando...');
+
+    $.post('index.php?controller=sacrej&action=api_toggle_ia_server', { service_action: action }, function(res) {
+        Swal.fire({
+            icon: res.success ? 'success' : 'info',
+            title: 'Servicio IA',
+            text: res.mensaje,
+            timer: 2000,
+            showConfirmButton: false
+        });
+
+        // Después de start, esperar más tiempo para que el servicio levante
+        const delay = action === 'start' ? 6000 : 1000;
+        setTimeout(verificarEstadoIA, delay);
+        btn.prop('disabled', false);
+    }, 'json').fail(function(jqXHR, textStatus, errorThrown) {
+        let mensaje = 'No se pudo comunicar con el controlador';
+        if (jqXHR && jqXHR.responseText) {
+            mensaje += ': ' + jqXHR.responseText;
+        }
+        if (textStatus) {
+            mensaje += ' (' + textStatus + ')';
+        }
+        if (errorThrown) {
+            mensaje += ' - ' + errorThrown;
+        }
+        Swal.fire('Error', mensaje, 'error');
+        btn.prop('disabled', false);
+    });
+}
+
 // 🔹 Lógica para Ver Detalles
 $(document).on('click', '.btnDetalle', function() {
     let idCel = $(this).data('idcel');
@@ -677,6 +781,10 @@ $(document).on('click', '.btnDetalle', function() {
 
 // 🔹 Lógica de Seguridad y Navegación
 $(document).ready(function() {
+    // Iniciar verificación de la IA al cargar
+    verificarEstadoIA();
+    setInterval(verificarEstadoIA, 5000);
+
     // Desactivar servidor automáticamente solo al navegar a otra opción del menú
     $('.navbar-nav a, .dropdown-item').on('click', function() {
         const href = $(this).attr('href');
