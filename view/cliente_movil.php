@@ -41,6 +41,7 @@
             <div class="text-start">
                 <h5 class="m-0 text-primary" id="userDisplay">Usuario</h5>
                 <small class="text-muted d-block" id="apiDisplay" style="font-size: 0.65rem;"></small>
+                <span id="ia-quota-badge" class="badge hidden" style="font-size: 0.6rem;"></span>
             </div>
             <button class="btn btn-sm btn-outline-danger" onclick="desconectar()">Salir</button>
         </div>
@@ -49,6 +50,15 @@
         <div class="py-4">
             <h4>Escanear Documento</h4>
             <p class="text-muted small">Toma una foto clara del documento para extraer el texto.</p>
+            
+            <!-- 🤖 Selector de Modelo -->
+            <div class="mt-2 text-start">
+                <label class="form-label small fw-bold mb-1">Modelo de Análisis:</label>
+                <select id="modelSelector" class="form-select form-select-sm">
+                    <option value="gemini-3.1-flash-lite-preview" selected>gemini-3.1-flash-lite (Sin límites)</option>
+                    <option value="gemini-3-flash-preview">gemini-3-flash-preview (Límite 18/día)</option>
+                </select>
+            </div>
         </div>
 
         <!-- Input para CÁMARA -->
@@ -546,12 +556,17 @@
                 $('#loader p').html(`Ejecutando reintento <b>#${numReintento}</b>...`);
             } else {
                 $('#loader p').text('Procesando con IA...');
+                const modelIA = $('#modelSelector').val();
+                const modelText = modelIA.includes('lite') ? 'Lite' : 'Pro';
+                $('#loader p').html(`Procesando con <b>Gemini ${modelText}</b>...`);
             }
                 $('#resultado').addClass('hidden').text('');
                 
                 const formData = new FormData();
+                const modelIA = $('#modelSelector').val();
                 formData.append('imagen', file);
                 formData.append('usuario_envio', usuarioActual); // Ajustado para coincidir con la validación del controlador
+                formData.append('modelo_ia', modelIA);
 
                 $.ajax({
                     url: '?controller=sacrej&action=api_procesar_imagen',
@@ -976,10 +991,12 @@
         function verificarEstadoLatido() {
             if (!usuarioActual || paginaCerrandose) return;
 
+            const modelIA = $('#modelSelector').val();
             $.post('?controller=sacrej&action=api_heartbeat', { 
                 nombre: usuarioActual,
                 processing: String(estaProcesando),
-                active: String(huboInteraccion) // ⚡ Informar actividad al servidor
+                active: String(huboInteraccion), // ⚡ Informar actividad al servidor
+                modelo_ia: modelIA
             }, function(res) {
                 huboInteraccion = false; // Resetear flag
 
@@ -1009,6 +1026,17 @@
                     // Mostrar el correo de la API Key en uso
                     if (res.api_email) {
                         $('#apiDisplay').text('IA: ' + res.api_email);
+                    }
+
+                    // 📊 Actualizar contador de peticiones IA
+                    if (res.ia_quota) {
+                        const q = res.ia_quota;
+                        $('#ia-quota-badge')
+                            .text(`IA: ${q.restante} disponibles`)
+                            .removeClass('hidden bg-success bg-warning bg-danger')
+                            .addClass(q.restante > 10 ? 'bg-success' : (q.restante > 3 ? 'bg-warning' : 'bg-danger'));
+                    } else {
+                        $('#ia-quota-badge').addClass('hidden');
                     }
 
                     if (res.status === 'allowed') {

@@ -564,6 +564,54 @@ class SacrejController
         exit;
     }
 
+    // 📊 Gestión de cuotas de IA (18 peticiones, reset 3:00 AM) - Solo para flash-preview
+    private function _gestionar_uso_api($email, $model, $incrementar = false, $agotar = false) {
+        $model = trim($model);
+        if (empty($model) || $model !== 'gemini-3-flash-preview') return null;
+
+        $archivo = 'api_usage.json';
+        $limite = 18;
+        $uso = 0;
+
+        if (!file_exists($archivo)) file_put_contents($archivo, json_encode([]));
+
+        $fp = fopen($archivo, 'c+');
+        if (flock($fp, LOCK_EX)) {
+            $content = stream_get_contents($fp);
+            $data = json_decode($content, true) ?: [];
+
+            if (!isset($data[$email])) {
+                $data[$email] = ['count' => 0, 'last_reset' => 0];
+            }
+
+            // 🕒 Lógica de reset a las 3:00 AM
+            $ahora = time();
+            $hoy_3am = strtotime('today 03:00:00');
+            $umbral = ($ahora >= $hoy_3am) ? $hoy_3am : strtotime('yesterday 03:00:00');
+
+            if ($data[$email]['last_reset'] < $umbral) {
+                $data[$email]['count'] = 0;
+                $data[$email]['last_reset'] = $ahora;
+            }
+
+            if ($agotar) {
+                $data[$email]['count'] = $limite;
+            } elseif ($incrementar) {
+                $data[$email]['count']++;
+            }
+            $uso = $data[$email]['count'];
+
+            ftruncate($fp, 0);
+            rewind($fp);
+            fwrite($fp, json_encode($data));
+            fflush($fp);
+            flock($fp, LOCK_UN);
+        }
+        fclose($fp);
+
+        return ['restante' => max(0, $limite - $uso), 'limite' => $limite];
+    }
+
     // ✅ Nueva función para que el Admin permita un dispositivo
     public function api_permitir_cliente()
     {
@@ -611,11 +659,14 @@ class SacrejController
         // 🛡️ Detección estricta: solo es true si el móvil envía literalmente la cadena "true"
         $is_processing = isset($_POST['processing']) && $_POST['processing'] === 'true';
         $user_active = isset($_POST['active']) && $_POST['active'] === 'true';
+        // Asegurar que si llega vacío use el valor por defecto
+        $modeloIA = !empty($_POST['modelo_ia']) ? trim($_POST['modelo_ia']) : 'gemini-3.1-flash-lite-preview';
         
         $apiEmail = 'No asignada';
         $conectado = false;
         $status = 'pending';
         $inactividad = 0;
+        $ia_info = null;
 
         if (!empty($nombre)) {
             $archivo = 'connected_clients.json';
@@ -631,6 +682,9 @@ class SacrejController
                     $clientes[$nombre]['is_processing'] = (bool)$is_processing; // 🛡️ Guardar como booleano real
                     $status = $clientes[$nombre]['status'] ?? 'pending';
                     $apiEmail = $clientes[$nombre]['api_email'] ?? 'No asignada'; // 📌 Obtener llave del cliente
+
+                    // Consultar cuota si el modelo lo requiere
+                    $ia_info = $this->_gestionar_uso_api($apiEmail, $modeloIA);
 
                     // 🚀 Reiniciar el timer si está cargando IA, está en espera, o si el usuario interactuó
                     if ($is_processing || $status === 'pending' || $user_active) {
@@ -655,7 +709,14 @@ class SacrejController
 
         // Devolvemos el estado del server para que el móvil sepa si debe salir
         $estado = file_exists('server_status.txt') ? trim(file_get_contents('server_status.txt')) : '0';
-        echo json_encode(['estado' => $estado, 'conectado' => $conectado, 'status' => $status, 'inactividad' => $inactividad, 'api_email' => $apiEmail]);
+        echo json_encode([
+            'estado' => $estado, 
+            'conectado' => $conectado, 
+            'status' => $status, 
+            'inactividad' => $inactividad, 
+            'api_email' => $apiEmail,
+            'ia_quota' => $ia_info
+        ]);
         exit;
     }
 
@@ -747,6 +808,8 @@ class SacrejController
         header('Content-Type: application/json');
 
         $nombreCliente = $_POST['usuario_envio'] ?? '';
+        // Validación más robusta del modelo recibido
+        $modeloIA = (!empty($_POST['modelo_ia'])) ? trim($_POST['modelo_ia']) : 'gemini-3.1-flash-lite-preview';
         $archivoClientes = 'connected_clients.json';
         $clientes = json_decode(file_exists($archivoClientes) ? file_get_contents($archivoClientes) : '{}', true);
 
@@ -764,6 +827,15 @@ class SacrejController
         // 🛡️ ACTUALIZAR ESTADO A "PROCESANDO" EN EL SERVIDOR
         // Esto evita que el contador de inactividad suba durante la carga de la imagen
         $this->_actualizar_cliente_state($nombreCliente, true);
+
+        // 🚫 Verificar límite de cuota para el modelo restringido
+        $userApiEmail = $clientes[$nombreCliente]['api_email'] ?? '';
+        $cuota = $this->_gestionar_uso_api($userApiEmail, $modeloIA);
+        if ($cuota && $cuota['restante'] <= 0) {
+            $this->_actualizar_cliente_state($nombreCliente, false);
+            echo json_encode(['error' => 'Límite de 18 peticiones alcanzado para el modelo gemini-3-flash-preview. Use Gemini Lite o espere a las 3:00 AM.']);
+            exit;
+        }
 
         if (!isset($_FILES['imagen']) || $_FILES['imagen']['error'] !== UPLOAD_ERR_OK) {
             $this->_actualizar_cliente_state($nombreCliente, false);
@@ -832,7 +904,6 @@ El folio N. lo puedes encontrar como folio o como un número en la parte superio
 
         // 4. Obtener la API Key específicamente asignada a este usuario
         $apiKeys = $this->_leer_api_keys();
-        $userApiEmail = $clientes[$nombreCliente]['api_email'] ?? '';
         $apiKey = $apiKeys[$userApiEmail]['key'] ?? '';
 
         if (empty($apiKey)) { echo json_encode(['error' => 'No hay llaves API disponibles.']); exit; }
@@ -843,7 +914,8 @@ El folio N. lo puedes encontrar como folio o como un número en la parte superio
             "client_id" => $nombreCliente,
             "api_key"   => $apiKey,
             "prompt"    => $instruccionesOCR,
-            "image"     => $base64
+            "image"     => $base64,
+            "model"     => $modeloIA
         ];
 
         $ch = curl_init($url);
@@ -876,6 +948,14 @@ El folio N. lo puedes encontrar como folio o como un número en la parte superio
             exit;
         }
 
+        // 🚫 MANEJO DEL ERROR 429: Cuota de Google excedida
+        if ($httpCode === 429 && $modeloIA === 'gemini-3-flash-preview') {
+            $this->_gestionar_uso_api($userApiEmail, $modeloIA, false, true); // Marcar como agotado
+            $this->_actualizar_cliente_state($nombreCliente, false);
+            echo json_encode(['error' => 'Gemini reportó que la cuota de esta llave se ha agotado (Error 429). Se han bloqueado los 18 intentos del modelo por hoy. Use Gemini Lite o espere a las 3:00 AM.']);
+            exit;
+        }
+
         if (!$jsonRes || (isset($jsonRes['status']) && $jsonRes['status'] === 'error')) {
             $this->_actualizar_cliente_state($nombreCliente, false);
             $msg = $jsonRes['message'] ?? 'Error de conexión con el servicio Python.';
@@ -890,6 +970,9 @@ El folio N. lo puedes encontrar como folio o como un número en la parte superio
 
         // 🏁 RESTAURAR ESTADO AL FINALIZAR CON ÉXITO
         $this->_actualizar_cliente_state($nombreCliente, false);
+
+        // 📈 Incrementar contador de uso solo si es el modelo Pro
+        $this->_gestionar_uso_api($userApiEmail, $modeloIA, true);
 
         // Éxito: Enviar respuesta de Gemini y la ruta de la imagen guardada
         echo json_encode([

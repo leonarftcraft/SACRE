@@ -26,16 +26,19 @@ clients = {}
 chat_sessions = {}
 chat_history = {}
 client_api_keys = {}
+client_models = {} # 🤖 Nuevo: rastrear modelo por cliente
 state_lock = threading.Lock() # 🔒 Evitar colisiones en peticiones simultáneas
 
-def get_chat_session(client_id, api_key):
+def get_chat_session(client_id, api_key, model_name):
     """Obtiene la sesión activa o crea una nueva para el cliente."""
     with state_lock:
-        # Si el api_key cambia, forzamos reset
-        if client_id in client_api_keys and client_api_keys[client_id] != api_key:
+        # Si el api_key o el modelo cambian, forzamos reset
+        if (client_id in client_api_keys and client_api_keys[client_id] != api_key) or \
+           (client_id in client_models and client_models[client_id] != model_name):
             _internal_reset(client_id)
 
         client_api_keys[client_id] = api_key
+        client_models[client_id] = model_name
 
         if client_id not in clients:
             logger.info(f"Creando nuevo cliente para {client_id}")
@@ -52,8 +55,8 @@ def get_chat_session(client_id, api_key):
                 ]
             )
 
-            # Usamos el modelo gemini-3-flash-preview
-            chat = clients[client_id].chats.create(model='gemini-3-flash-preview', config=config)
+            # Usamos el modelo seleccionado dinámicamente
+            chat = clients[client_id].chats.create(model=model_name, config=config)
             chat_sessions[client_id] = chat
             chat_history[client_id] = []
 
@@ -66,11 +69,12 @@ def reset_chat_session(client_id):
         _internal_reset(client_id)
 
 def _internal_reset(client_id):
-    logger.warning(f"Reseteando sesión del cliente {client_id} por error o cambio de llave.")
+    logger.warning(f"Reseteando sesión del cliente {client_id} por error o cambio de configuración.")
     clients.pop(client_id, None)
     chat_sessions.pop(client_id, None)
     chat_history.pop(client_id, None)
     client_api_keys.pop(client_id, None)
+    client_models.pop(client_id, None) # 🧹 Limpiar rastro del modelo
 
 
 @app.route('/process', methods=['POST'])
@@ -80,13 +84,14 @@ def process_request():
     api_key = data.get('api_key')
     prompt = data.get('prompt')
     image_b64 = data.get('image') # Imagen opcional (solo para extracción)
+    model_name = data.get('model', 'gemini-3.1-flash-lite-preview') # Lite por defecto
 
     if not client_id or not api_key or not prompt:
         return jsonify({"status": "error", "message": "Faltan parámetros: client_id, api_key o prompt"}), 400
 
     try:
-        logger.info(f"Recibida petición de {client_id}")
-        chat = get_chat_session(client_id, api_key)
+        logger.info(f"Recibida petición de {client_id} usando modelo {model_name}")
+        chat = get_chat_session(client_id, api_key, model_name)
         
         message_parts = [prompt]
         if image_b64:
@@ -104,7 +109,7 @@ def process_request():
             if any(k in err_msg for k in ['closed', 'http', 'reconnection', 'dead', 'inactive']):
                 logger.warning("Cliente cerrado detectado. Reintentando con nueva sesión...")
                 reset_chat_session(client_id)
-                chat = get_chat_session(client_id, api_key)
+                chat = get_chat_session(client_id, api_key, model_name)
                 response = chat.send_message(message_parts)
             else:
                 raise
@@ -127,6 +132,8 @@ def process_request():
         status_code = 500
         if "503" in msg or "overloaded" in msg.lower() or "unavailable" in msg.lower():
             status_code = 503
+        elif "429" in msg or "quota" in msg.lower() or "rate limit" in msg.lower():
+            status_code = 429
         return jsonify({"status": "error", "message": msg}), status_code
 
 if __name__ == '__main__':
