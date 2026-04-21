@@ -123,7 +123,11 @@ def process_request():
             "client_id": client_id
         })
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        msg = str(e)
+        status_code = 500
+        if "503" in msg or "overloaded" in msg.lower() or "unavailable" in msg.lower():
+            status_code = 503
+        return jsonify({"status": "error", "message": msg}), status_code
 
 if __name__ == '__main__':
     print("LISTO: Microservicio de IA activo en puerto 5000")

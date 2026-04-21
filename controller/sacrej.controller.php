@@ -475,12 +475,41 @@ class SacrejController
                 }
             }
 
-            // 🚫 VALIDACIÓN: Evitar nombres duplicados en tiempo real
+            // 🔑 LÓGICA DE ASIGNACIÓN DE LLAVES API ÚNICAS
+            $apiKeys = $this->_leer_api_keys();
+            $emailsEnUso = array_column($clientes, 'api_email');
+            $emailAsignado = '';
+
+            foreach ($apiKeys as $keyData) {
+                if (!in_array($keyData['email'], $emailsEnUso)) {
+                    $emailAsignado = $keyData['email'];
+                    break;
+                }
+            }
+
+            // 🔄 LÓGICA DE RE-CONEXIÓN: Si el nombre ya existe, permitimos la entrada
+            // Esto evita que el usuario quede bloqueado al refrescar la página.
             if (isset($clientes[$nombre])) {
+                $clientes[$nombre]['last_seen'] = time();
+                $clientes[$nombre]['last_activity'] = time();
+                // Mantenemos el status y api_email previos
+                
+                ftruncate($fp, 0);
+                rewind($fp);
+                fwrite($fp, json_encode($clientes));
+                fflush($fp);
+                flock($fp, LOCK_UN);
+                fclose($fp);
+                echo json_encode(['success' => true, 'reconnected' => true]);
+                exit;
+            }
+
+            // 🚫 VALIDACIÓN: Verificar disponibilidad de llaves
+            if (!$emailAsignado) {
                 flock($fp, LOCK_UN);
                 fclose($fp);
                 if (ob_get_length()) ob_clean();
-                echo json_encode(['success' => false, 'message' => "El nombre '$nombre' ya está en uso por otro dispositivo conectado."]);
+                echo json_encode(['success' => false, 'message' => 'No hay licencias de IA disponibles. Máximo de conexiones alcanzado.']);
                 exit;
             }
 
@@ -489,7 +518,8 @@ class SacrejController
                 'last_seen'     => time(), 
                 'last_activity' => time(), 
                 'status'        => 'pending',
-                'is_processing' => false
+                'is_processing' => false,
+                'api_email'     => $emailAsignado // 📌 Guardar llave asignada
             ];
             
             ftruncate($fp, 0);
@@ -582,6 +612,7 @@ class SacrejController
         $is_processing = isset($_POST['processing']) && $_POST['processing'] === 'true';
         $user_active = isset($_POST['active']) && $_POST['active'] === 'true';
         
+        $apiEmail = 'No asignada';
         $conectado = false;
         $status = 'pending';
         $inactividad = 0;
@@ -599,6 +630,7 @@ class SacrejController
                     $clientes[$nombre]['last_seen'] = time();
                     $clientes[$nombre]['is_processing'] = (bool)$is_processing; // 🛡️ Guardar como booleano real
                     $status = $clientes[$nombre]['status'] ?? 'pending';
+                    $apiEmail = $clientes[$nombre]['api_email'] ?? 'No asignada'; // 📌 Obtener llave del cliente
 
                     // 🚀 Reiniciar el timer si está cargando IA, está en espera, o si el usuario interactuó
                     if ($is_processing || $status === 'pending' || $user_active) {
@@ -623,7 +655,7 @@ class SacrejController
 
         // Devolvemos el estado del server para que el móvil sepa si debe salir
         $estado = file_exists('server_status.txt') ? trim(file_get_contents('server_status.txt')) : '0';
-        echo json_encode(['estado' => $estado, 'conectado' => $conectado, 'status' => $status, 'inactividad' => $inactividad]);
+        echo json_encode(['estado' => $estado, 'conectado' => $conectado, 'status' => $status, 'inactividad' => $inactividad, 'api_email' => $apiEmail]);
         exit;
     }
 
@@ -683,6 +715,30 @@ class SacrejController
         exit;
     }
 
+    // 🛠️ Función auxiliar para actualizar el estado de procesamiento de un cliente
+    private function _actualizar_cliente_state($nombre, $is_processing) {
+        $archivo = 'connected_clients.json';
+        if (!file_exists($archivo)) return;
+        $fp = fopen($archivo, 'c+');
+        if (flock($fp, LOCK_EX)) {
+            rewind($fp);
+            $content = stream_get_contents($fp);
+            $clientes = json_decode($content, true) ?: [];
+            if (isset($clientes[$nombre])) {
+                $clientes[$nombre]['is_processing'] = (bool)$is_processing;
+                // 🔥 Mantener al cliente "vivo" y activo mientras la IA trabaja
+                $clientes[$nombre]['last_activity'] = time();
+                $clientes[$nombre]['last_seen'] = time();
+                ftruncate($fp, 0);
+                rewind($fp);
+                fwrite($fp, json_encode($clientes));
+                fflush($fp);
+            }
+            flock($fp, LOCK_UN);
+        }
+        fclose($fp);
+    }
+
     public function api_procesar_imagen()
     {
         session_write_close(); // 🚀 Liberar sesión de inmediato para permitir heartbeats
@@ -705,7 +761,12 @@ class SacrejController
             exit;
         }
 
+        // 🛡️ ACTUALIZAR ESTADO A "PROCESANDO" EN EL SERVIDOR
+        // Esto evita que el contador de inactividad suba durante la carga de la imagen
+        $this->_actualizar_cliente_state($nombreCliente, true);
+
         if (!isset($_FILES['imagen']) || $_FILES['imagen']['error'] !== UPLOAD_ERR_OK) {
+            $this->_actualizar_cliente_state($nombreCliente, false);
             echo json_encode(['error' => 'No se recibió ninguna imagen válida.']);
             exit;
         }
@@ -756,20 +817,24 @@ Las fechas extraídas deben ser interpretadas en formato DD/MM/YYYY.
 Si alguna clave no la encuentras en la imagen ponle null.  
 **Cuando extraigas la clave N° extrae el numero sin "." y ","**
  **Control sobre la clave Filiacion:** Analiza y asigna: "Reconocido", "Legítimo", "Natural", "Ilegítimo" o "No reconocido".
+**Control sobre el Sexo del Bautizado:** 
+Determina el sexo a partir del nombre o el contexto del acta. Asigna estrictamente: "Masculino" o "Femenino".
 **Control Folio N°:**
 El folio N. lo puedes encontrar como folio o como un número en la parte superior.
 **Estructura de los datos:**
     Devuelve SIEMPRE un arreglo JSON `[...]`.
 
     ```json
-    [{"Nombre del Bautizado":"","Apellido del Bautizado":"","Nombre del Padre":"","Apellido del Padre":"","Nombre de la Madre":"","Apellido de la Madre":"","Filiacion":"","Lugar de nacimiento":"","Fecha de nacimiento":"","Fecha de bautizo":"","Nombre de la Madrina":"","Apellido de la madrina":"","Nombre del Padrino":"","Apellido del Padrino":"","Ministro":"","N°":"","Folio N°":"","Observaciones":"","Registro Civil":""}]
+    [{"Nombre del Bautizado":"","Apellido del Bautizado":"","Sexo del Bautizado":"","Nombre del Padre":"","Apellido del Padre":"","Nombre de la Madre":"","Apellido de la Madre":"","Filiacion":"","Lugar de nacimiento":"","Fecha de nacimiento":"","Fecha de bautizo":"","Nombre de la Madrina":"","Apellido de la madrina":"","Nombre del Padrino":"","Apellido del Padrino":"","Ministro":"","N°":"","Folio N°":"","Observaciones":"","Registro Civil":""}]
     ```
 
     Ministros autorizados: (' . $ministrosString . ').';
 
-        // 4. Obtener API Key
-        $keysGuardadas = $this->_leer_api_keys();
-        $apiKey = !empty($keysGuardadas) ? reset($keysGuardadas)['key'] : '';
+        // 4. Obtener la API Key específicamente asignada a este usuario
+        $apiKeys = $this->_leer_api_keys();
+        $userApiEmail = $clientes[$nombreCliente]['api_email'] ?? '';
+        $apiKey = $apiKeys[$userApiEmail]['key'] ?? '';
+
         if (empty($apiKey)) { echo json_encode(['error' => 'No hay llaves API disponibles.']); exit; }
 
         // 🐍 LLAMADA AL MICROSERVICIO PYTHON (Usamos 127.0.0.1 para evitar fallos de resolución de DNS local)
@@ -789,23 +854,30 @@ El folio N. lo puedes encontrar como folio o como un número en la parte superio
         curl_setopt($ch, CURLOPT_TIMEOUT, 120); 
 
         $response = curl_exec($ch);
-        if (curl_errno($ch)) {
-            $err = curl_error($ch);
-            curl_close($ch);
-            echo json_encode(['error' => "Servicio IA no disponible. Asegúrate de ejecutar 'python tools/AI_ser.py'. Detalle: $err"]);
-            
-            // 🛡️ Si hay error de conexión, avisamos específicamente
-            $msg = (strpos($err, '5000') !== false) 
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_errno($ch) ? curl_error($ch) : '';
+        curl_close($ch);
+
+        if ($curlError) {
+            $msg = (strpos($curlError, '5000') !== false) 
                 ? "Error: El microservicio SACRE-IA no está respondiendo en el puerto 5000."
-                : "Error de comunicación con la IA: $err";
+                : "Error de comunicación con la IA: $curlError";
             echo json_encode(['error' => $msg]);
             exit;
         }
-        curl_close($ch);
 
         $jsonRes = json_decode($response, true);
-        
+
+        // Si el código HTTP es 503, lo reportamos explícitamente para que el móvil reintente
+        if ($httpCode === 503) {
+            http_response_code(503); // Informamos al navegador que es un error 503
+            // No quitamos el flag de procesamiento aquí porque el cliente reintentará en breve
+            echo json_encode(['error' => 'Servidor de IA sobrecargado. Iniciando reintento automático.']);
+            exit;
+        }
+
         if (!$jsonRes || (isset($jsonRes['status']) && $jsonRes['status'] === 'error')) {
+            $this->_actualizar_cliente_state($nombreCliente, false);
             $msg = $jsonRes['message'] ?? 'Error de conexión con el servicio Python.';
             echo json_encode(['error' => $msg]);
             exit;
@@ -815,6 +887,9 @@ El folio N. lo puedes encontrar como folio o como un número en la parte superio
         $geminiData = [
             'candidates' => [['content' => ['parts' => [['text' => $jsonRes['response']]]]]]
         ];
+
+        // 🏁 RESTAURAR ESTADO AL FINALIZAR CON ÉXITO
+        $this->_actualizar_cliente_state($nombreCliente, false);
 
         // Éxito: Enviar respuesta de Gemini y la ruta de la imagen guardada
         echo json_encode([
@@ -933,7 +1008,12 @@ El folio N. lo puedes encontrar como folio o como un número en la parte superio
 
     public function api_enviar_bautizos_temporal()
     {
-        header('Content-Type: application/json');
+        session_write_close(); // 🚀 Liberar sesión para evitar bloqueos
+        if (ob_get_length()) ob_clean(); // 🧹 Limpiar buffer para evitar JSON corrupto
+        header('Content-Type: application/json; charset=utf-8');
+        
+        // Debug: Log received data
+        file_put_contents('debug_api_enviar.txt', date('Y-m-d H:i:s') . ' - POST: ' . json_encode($_POST) . "\n", FILE_APPEND);
         
         $datos = $_POST;
         $datos['timestamp'] = time();

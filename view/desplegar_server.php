@@ -195,6 +195,7 @@
                         <div class="col-md-6"><label class="form-label small">Apellido</label><input type="text" id="editApeInd" name="ApeInd" class="form-control form-control-sm" required data-was-required="true"></div>
                         <div class="col-md-4"><label class="form-label small">Fecha Nac.</label><input type="date" id="editFecNacInd" name="FecNacInd" class="form-control form-control-sm" required data-was-required="true"></div>
                         <div class="col-md-4"><label class="form-label small">Lugar Nac.</label><input type="text" id="editLugNacInd" name="LugNacInd" class="form-control form-control-sm" required data-was-required="true"></div>
+                        <div class="col-md-4"><label class="form-label small">Sexo</label><select id="editSexIndSelect" class="form-select form-select-sm" onchange="$('#editSexInd').val(this.value)"><option value="1">Masculino</option><option value="2">Femenino</option></select></div>
                         <div class="col-md-4"><label class="form-label small">Filiación</label>
                             <select id="editFilInd" name="FilInd" class="form-select form-select-sm" required data-was-required="true">
                                 <option value="1">Reconocido</option><option value="2">Legítimo</option><option value="3">Natural</option><option value="4">Ilegítimo</option><option value="0">No reconocido</option>
@@ -433,7 +434,7 @@ function actualizarClientes() {
                 // 📋 Lógica de etiquetas de estado
                 let etiquetaEstado = "";
                 if (c.status === 'pending') etiquetaEstado = "En espera";
-                else if (c.processing === true || c.processing === "true") etiquetaEstado = "Procesando...";
+                else if (c.processing === true || c.processing === "true" || c.processing == 1) etiquetaEstado = "Procesando...";
 
                 let contenidoInactividad = (etiquetaEstado !== "") 
                     ? `<span class="badge bg-primary w-100 animate-pulse-slow">${etiquetaEstado}</span>` 
@@ -637,6 +638,7 @@ function editarPendiente(index) {
         $('#editEstCel').val(d.EstCel || '1'); // Default a Estandar si no existe
         $('#editIdInd').val(d.IdInd);
         $('#editSexInd').val(d.SexInd);
+        $('#editSexIndSelect').val(d.SexInd);
         $('#editRutaImagen').val(d.RutaImagen || '');
 
         // Mostrar enlace a imagen si existe
@@ -743,6 +745,7 @@ $(document).on('click', '.btnDetalle', function() {
             $('#dFecNac').text(d.fec_nac); // El formato viene del controlador
             $('#dLugNac').text(d.lugar_nac);
              
+            let fil = d.filiacion;
             if(fil == 1) fil = 'Reconocido';
             else if(fil == 2) fil = 'Legítimo';
             else if(fil == 3) fil = 'Natural';

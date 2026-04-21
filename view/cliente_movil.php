@@ -38,7 +38,10 @@
     <!-- PANTALLA 2: CÁMARA -->
     <div id="screen-camera" class="mobile-card hidden">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="m-0 text-primary" id="userDisplay">Usuario</h5>
+            <div class="text-start">
+                <h5 class="m-0 text-primary" id="userDisplay">Usuario</h5>
+                <small class="text-muted d-block" id="apiDisplay" style="font-size: 0.65rem;"></small>
+            </div>
             <button class="btn btn-sm btn-outline-danger" onclick="desconectar()">Salir</button>
         </div>
         <hr>
@@ -55,10 +58,10 @@
         <input type="file" id="galleryInput" accept="image/*" style="display: none;" onchange="procesarImagen(this)">
 
         <div class="d-grid gap-2">
-            <button class="btn btn-success btn-big" onclick="abrirCamaraConValidacion()">
+            <button id="btnCaptureCamera" class="btn btn-success btn-big" onclick="abrirCamaraConValidacion()">
                 📸 Capturar con Cámara
             </button>
-            <button class="btn btn-info btn-big text-white" onclick="abrirGaleriaConValidacion()">
+            <button id="btnCaptureGallery" class="btn btn-info btn-big text-white" onclick="abrirGaleriaConValidacion()">
                 📁 Seleccionar de Galería
             </button>
         </div>
@@ -167,6 +170,7 @@
         let huboInteraccion = false; // ⚡ Flag para resetear inactividad
         let paginaCerrandose = false; // 🛡️ Evitar latidos al salir
         let heartbeatInterval = null; 
+        let ultimaExtraccionIA = null; // 🔹 Almacena los datos originales de la IA para el cálculo de correcciones
         
         // 🔹 Datos de ministros en JS para validación
         let ministrosData = [
@@ -183,6 +187,10 @@
         
         let colaMinistros = [];
         let actasPendientes = [];
+
+        function toggleCaptureButtons(disabled) {
+            $('#btnCaptureCamera, #btnCaptureGallery').prop('disabled', disabled);
+        }
 
         function generarOpcionesMinistros() {
             let opts = '<option value="">Seleccione...</option>';
@@ -203,12 +211,14 @@
 
         function volverACamara() {
             estaProcesando = false; // ✅ Liberar estado al volver
+            toggleCaptureButtons(false); // ✅ Asegurar que botones estén activos
             $('#screen-form').addClass('hidden');
             $('#screen-camera').removeClass('hidden');
             $('#forms-container').empty(); // Limpiar formularios dinámicos
             $('#btnGuardarTodo').addClass('hidden');
             folioActual = null; // Resetear folio (cambia por página)
             $('#folioGeneral').val('');
+            ultimaExtraccionIA = null;
             rutaImagenActual = "";
         }
 
@@ -246,7 +256,7 @@
                         <div class="row g-2">
                             <div class="col-6"><label class="form-label small">Nombre</label><input type="text" id="NomInd${idSuffix}" name="NomInd" class="form-control form-control-sm" required data-was-required="true"></div>
                             <div class="col-6"><label class="form-label small">Apellido</label><input type="text" id="ApeInd${idSuffix}" name="ApeInd" class="form-control form-control-sm" required data-was-required="true"></div>
-                            <div class="col-6"><label class="form-label small">Sexo</label><select id="SexInd${idSuffix}" name="SexInd" class="form-select form-select-sm" required data-was-required="true"><option value="1">Masculino</option><option value="2">Femenino</option></select></div>
+                            <div class="col-6"><label class="form-label small">Sexo</label><select id="SexInd${idSuffix}" name="SexInd" class="form-select form-select-sm" required data-was-required="true"><option value="">Seleccione...</option><option value="1">Masculino</option><option value="2">Femenino</option></select></div>
                             <div class="col-6"><label class="form-label small">Filiación</label><select id="FilInd${idSuffix}" name="FilInd" class="form-select form-select-sm" required data-was-required="true"><option value="">Seleccione...</option><option value="1">Reconocido</option><option value="2">Legítimo</option><option value="3">Natural</option><option value="4">Ilegítimo</option><option value="0">No reconocido</option></select></div>
                         </div>
                         
@@ -360,12 +370,23 @@
                 return '';
             }
 
+            // Helper para sexo
+            function obtenerValorSexo(texto) {
+                if (!texto) return '';
+                const t = texto.toLowerCase().trim();
+                if (t.includes('femenin') || t === 'f' || t === '2' || t === 'mujer' || t === 'niña' || t === 'hembra') return '2';
+                if (t.includes('masculin') || t === 'm' || t === '1' || t === 'niño' || t === 'varon' || t === 'varón' || t === 'hombre') return '1';
+                return '';
+            }
+
             // Poblar campos del formulario
             $('#IdCel' + idSuffix).val(cleanValue(datos['N°']));
             // El folio se maneja globalmente ahora
             $('#NomInd' + idSuffix).val(cleanValue(datos['Nombre del Bautizado']));
             $('#RutaImagen' + idSuffix).val(rutaImagenActual); // 🔹 Asignar ruta de imagen
             $('#ApeInd' + idSuffix).val(cleanValue(datos['Apellido del Bautizado']));
+            let valSexo = cleanValue(datos['Sexo del Bautizado'] || datos['Sexo'] || datos['sexo']);
+            $('#SexInd' + idSuffix).val(obtenerValorSexo(valSexo));
             $('#LugNacInd' + idSuffix).val(cleanValue(datos['Lugar de nacimiento']));
             $('#FecNacInd' + idSuffix).val(formatearFechaParaInput(cleanValue(datos['Fecha de nacimiento'])));
             $('#NomMad' + idSuffix).val(cleanValue(datos['Nombre de la Madre']));
@@ -457,17 +478,6 @@
             }
         }
 
-        // 🔹 Desconectar automáticamente al cerrar pestaña o recargar
-        // Usamos 'pagehide' que es mucho más fiable en móviles que 'beforeunload'
-        window.addEventListener("pagehide", function () {
-            if (usuarioActual) {
-                // ✅ Usamos URLSearchParams para mayor compatibilidad en el envío beacon
-                var data = new URLSearchParams();
-                data.append('nombre', usuarioActual);
-                navigator.sendBeacon("?controller=sacrej&action=api_desconectar_cliente", data);
-            }
-        });
-
         // 🔹 Función centralizada para sacar al usuario
         function salirDelSistema(mensaje) {
             sessionStorage.removeItem('usuario_sacra'); // ✅ Limpiar sesión
@@ -509,7 +519,8 @@
         // 🔹 Validación al pulsar el botón de cámara
         function abrirCamaraConValidacion() {
             ejecutarSiServidorActivo(() => {
-                estaProcesando = true; // ✅ Iniciar estatus de procesamiento
+                estaProcesando = true; // ✅ Iniciar estatus de procesamiento (para heartbeat)
+                toggleCaptureButtons(true); // 🔒 Desactivar botones de captura
                 document.getElementById('cameraInput').click();
             });
         }
@@ -517,19 +528,25 @@
         // 🔹 NUEVA: Validación al pulsar el botón de galería
         function abrirGaleriaConValidacion() {
             ejecutarSiServidorActivo(() => {
-                estaProcesando = true; // ✅ Iniciar estatus de procesamiento
+                estaProcesando = true; // ✅ Iniciar estatus de procesamiento (para heartbeat)
+                toggleCaptureButtons(true); // 🔒 Desactivar botones de captura
                 document.getElementById('galleryInput').click();
             });
         }
 
-        function procesarImagen(input) { // MODIFICADO: recibe el input
-            if (input.files && input.files[0]) {
-                const file = input.files[0];
-                
-                estaProcesando = true; // ✅ Activar estado de procesamiento
+        function procesarImagen(input, filePrevia = null, numReintento = 0) { 
+            const file = filePrevia || (input && input.files && input.files[0]);
+            if (!file) return;
 
-                // Mostrar loader
-                $('#loader').removeClass('hidden');
+            // Mostrar loader
+            $('#loader').removeClass('hidden');
+            if (numReintento > 0) {
+                // Si es un reintento, los botones ya están deshabilitados.
+                // Solo necesitamos actualizar el texto del loader.
+                $('#loader p').html(`Ejecutando reintento <b>#${numReintento}</b>...`);
+            } else {
+                $('#loader p').text('Procesando con IA...');
+            }
                 $('#resultado').addClass('hidden').text('');
                 
                 const formData = new FormData();
@@ -542,9 +559,14 @@
                     data: formData,
                     contentType: false,
                     processData: false,
-                    complete: function() {
-                        $('#loader').addClass('hidden');
-                        estaProcesando = false; // ✅ Liberar: ya no estamos en el túnel de carga
+                    complete: function(jqXHR) {
+                        // 🛡️ Solo ocultar loader y liberar si NO es un error 503 (reintento)
+                        // Si es 503, gestionarReintentoIA se encarga de mantener el estado
+                        if (jqXHR.status !== 503) {
+                            toggleCaptureButtons(false);
+                            $('#loader').addClass('hidden');
+                            estaProcesando = false;
+                        }
                     },
                     success: function(res) {
                         
@@ -584,6 +606,7 @@
                                     salirDelSistema(msg);
                                     return;
                                 }
+                                toggleCaptureButtons(false);
                                 Swal.fire('Atención', msg, 'warning');
                                 return;
                             }
@@ -673,6 +696,9 @@
                                             folioActual = '';
                                         }
 
+                                        // 🧠 Guardar la extracción original para el cálculo de correcciones (IA Learning)
+                                        ultimaExtraccionIA = JSON.parse(JSON.stringify(actas));
+
                                         // 🔹 Verificar ministros antes de mostrar formularios
                                         verificarMinistros(actas);
 
@@ -704,10 +730,12 @@
                                     cancelButtonText: 'Cancelar'
                                 }).then((r) => {
                                     if(r.isConfirmed) {
+                                        ultimaExtraccionIA = null;
                                         // Simular un acta vacía para abrir el formulario
                                         mostrarFormularios([{}]);
                                     } else {
                                         estaProcesando = false; // ✅ Liberar si cancela
+                                        toggleCaptureButtons(false);
                                     }
                                 });
                                 return; // Detener flujo automático
@@ -755,16 +783,33 @@
                             Swal.fire('Error', 'Error al procesar la respuesta de la IA: ' + e.message, 'error');
                         }
                     },
-                    error: function() {
-                        estaProcesando = false; // ✅ Liberar si falla la subida
+                    error: function(xhr) {
+                        if (xhr.status === 503) {
+                            gestionarReintentoIA(input, file, numReintento + 1);
+                            return;
+                        }
                         $('#loader').addClass('hidden');
+                        estaProcesando = false;
                         Swal.fire('Error', 'Error de conexión al subir la imagen', 'error');
                     }
                 });
                 
                 // Limpiar input para permitir tomar la misma foto de nuevo
-                input.value = '';
-            }
+                if (input) input.value = '';
+        }
+
+        function gestionarReintentoIA(input, file, siguienteReintento) {
+            estaProcesando = true; // Mantener ocupado para el heartbeat
+            $('#loader').removeClass('hidden');
+            let segundos = 10;
+            const timerInterval = setInterval(() => {
+                $('#loader p').html(`IA saturada. Reintento <b>#${siguienteReintento}</b><br>Siguiente intento en: <b>${segundos}s</b>`);
+                segundos--;
+                if (segundos < 0) {
+                    clearInterval(timerInterval);
+                    procesarImagen(input, file, siguienteReintento);
+                }
+            }, 1000);
         }
 
         // 🔹 Lógica para verificar y registrar ministros faltantes
@@ -961,6 +1006,11 @@
                         avisoInactividadMostrado = false;
                     }
 
+                    // Mostrar el correo de la API Key en uso
+                    if (res.api_email) {
+                        $('#apiDisplay').text('IA: ' + res.api_email);
+                    }
+
                     if (res.status === 'allowed') {
                         $('#screen-wait').addClass('hidden');
                         if ($('#screen-form').hasClass('hidden')) {
@@ -990,9 +1040,11 @@
             // Esto captura el momento en que se cierra el diálogo sin elegir nada.
             document.getElementById('cameraInput').addEventListener('cancel', () => {
                 estaProcesando = false;
+                toggleCaptureButtons(false); // Re-activar botones si se cancela
             });
             document.getElementById('galleryInput').addEventListener('cancel', () => {
                 estaProcesando = false;
+                toggleCaptureButtons(false); // Re-activar botones si se cancela
             });
 
             let guardado = sessionStorage.getItem('usuario_sacra');
@@ -1063,13 +1115,15 @@
                         
                         // Normalizador de fechas para comparar DD/MM/YYYY
                         const dmy = (d) => { if(!d) return ''; const p = d.split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d; };
+                        const sexMap = { "1": "Masculino", "2": "Femenino" };
 
-                        const check = (fName, iaK, isD = false) => {
+                        const check = (fName, iaK, isD = false, isS = false) => {
                             let valF = $f.find(`[name="${fName}"]`).val();
                             if (isD) valF = dmy(valF);
+                            if (isS) valF = sexMap[valF] || valF;
                             let valI = original[iaK];
                             let cleanI = (valI === null || valI === 'null' || typeof valI === 'undefined') ? '' : String(valI).trim();
-                            if (String(valF).trim() !== cleanI && cleanI !== '') {
+                            if (String(valF).trim().toLowerCase() !== cleanI.toLowerCase() && cleanI !== '') {
                                 corActa[iaK] = valF;
                                 mod = true;
                             }
@@ -1077,6 +1131,7 @@
 
                         check('NomInd', 'Nombre del Bautizado');
                         check('ApeInd', 'Apellido del Bautizado');
+                        check('SexInd', 'Sexo del Bautizado', false, true);
                         check('NomPad', 'Nombre del Padre');
                         check('ApePad', 'Apellido del Padre');
                         check('NomMad', 'Nombre de la Madre');
@@ -1114,12 +1169,14 @@
                     jsonData['usuario_envio'] = usuarioActual; // Añadir quién envía
 
                     try {
+                        console.log('Sending data for form', i, ':', jsonData);
                         const res = await $.ajax({
                             url: "?controller=sacrej&action=api_enviar_bautizos_temporal",
                             type: "POST",
                             dataType: "json",
                             data: jsonData
                         });
+                        console.log('Response:', res);
 
                         if (res.status === "ok") {
                             guardados++;
