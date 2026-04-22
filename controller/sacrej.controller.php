@@ -126,8 +126,8 @@ class SacrejController
     }
     
     private function _get_enc_key() {
-        // En producción, esto debería estar en una variable de entorno
-        return 'CLAVE_SECRETA_SACREJ_2025_SEGURA'; 
+        // Priorizar clave desde variable de entorno para mayor seguridad
+        return getenv('SACREJ_ENC_KEY') ?: 'CLAVE_SECRETA_SACREJ_2025_SEGURA'; 
     }
 
     private function _leer_api_keys() {
@@ -920,7 +920,8 @@ JSON
   }
 ]
 •	Ministro: si el nombre de esta clave se parece aunque sea un poco con uno 
-de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $ministrosString . ').';
+de esta lista usa el nombre de la lista en lugar del que estragiste,
+ ahora si no aparece en la lista usa el nombre que estragiste: (' . $ministrosString . ').';
 
         // 4. Obtener la API Key específicamente asignada a este usuario
         $apiKeys = $this->_leer_api_keys();
@@ -1803,8 +1804,8 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         $nombre = $_POST['nombre'] ?? 'respaldo';
         $rutaDestino = $_POST['ruta'] ?? '';
 
-        // Normalizar ruta (Windows usa \, pero PHP maneja / bien)
-        $rutaDestino = rtrim(str_replace('\\', '/', $rutaDestino), '/');
+        // Normalizar y sanitizar ruta para evitar ataques de Directory Traversal
+        $rutaDestino = rtrim(str_replace(['\\', '..'], ['/', ''], $rutaDestino), '/');
 
         // Validar o crear carpeta
         if (!is_dir($rutaDestino)) {

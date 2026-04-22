@@ -125,15 +125,30 @@
     <div class="modal fade" id="modalNuevoMinistro" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header bg-warning">
-                    <h5 class="modal-title" id="modalMinistroTitle">Ministro no registrado</h5>
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title" id="modalMinistroTitle">Verificar Ministro</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
-                    <div id="modalMinistroMsg">
-                        <p>El ministro <strong id="lblMinistroDetectado"></strong> no aparece en la lista.</p>
-                        <p class="small text-muted">Por favor, regístralo para continuar.</p>
+                    <div class="alert alert-warning p-2 mb-3" style="font-size: 0.75rem;">
+                        <i class="bi bi-exclamation-triangle"></i> Por favor, revise si el ministro ya está en el sistema antes de crear uno nuevo.
                     </div>
+
+                    <div id="modalMinistroMsg">
+                        <p class="small mb-1">En la Fe de Bautismo <b>N° <span id="lblActaPertenece"></span></b> se detectó a:</p>
+                        <h5 class="text-center text-primary border-bottom pb-2" id="lblMinistroDetectado"></h5>
+                    </div>
+
+                    <!-- 🔹 SELECCIÓN DE EXISTENTE -->
+                    <div id="divExistente" class="mb-4 mt-3 p-2 bg-light border rounded">
+                        <label class="form-label small fw-bold">¿Ya está registrado? Selecciónelo:</label>
+                        <select id="selMinistroExistente" class="form-select form-select-sm mb-2"></select>
+                        <button type="button" class="btn btn-sm btn-outline-primary w-100" onclick="usarMinistroExistente()">Usar Seleccionado</button>
+                    </div>
+
+                    <hr>
+                    <p class="small text-muted text-center">O regístrelo como nuevo aquí:</p>
+
                     <form id="formNuevoMinistro">
                         <div class="mb-2">
                             <label class="form-label small">Nombre</label>
@@ -159,9 +174,8 @@
                         </div>
                     </form>
                 </div>
-                <div class="modal-footer flex-column">
-                    <button type="button" class="btn btn-primary w-100" onclick="guardarNuevoMinistro()">Guardar y Continuar</button>
-                    <button type="button" id="btnOmitirMinistro" class="btn btn-outline-secondary w-100 mt-2" onclick="omitirRegistroMinistro()">Continuar sin registrar</button>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-success w-100" onclick="guardarNuevoMinistro()">Registrar y Continuar</button>
                 </div>
             </div>
         </div>
@@ -837,13 +851,14 @@
                 let nombreIA = (a['Ministro'] || '').trim();
                 // Limpiar espacios extra
                 nombreIA = nombreIA.replace(/\s+/g, ' ');
+                let actaNum = a['N°'] || 'N/A';
                 
                 if (nombreIA.length > 2) {
                     // Verificar si existe en la lista local (case insensitive)
                     let existe = ministrosData.some(m => m.nombre.toLowerCase() === nombreIA.toLowerCase());
                     
                     if (!existe && !nombresVistos.has(nombreIA.toLowerCase())) {
-                        colaMinistros.push(nombreIA);
+                        colaMinistros.push({ nombre: nombreIA, acta: actaNum });
                         nombresVistos.add(nombreIA.toLowerCase());
                     }
                 }
@@ -865,14 +880,15 @@
                 return;
             }
 
-            let nombreCompleto = colaMinistros[0];
+            let item = colaMinistros[0];
+            let nombreCompleto = item.nombre;
             
-            $('#modalMinistroTitle').text('Ministro no registrado');
-            $('#modalMinistroMsg').html(`
-                <p>El ministro <strong id="lblMinistroDetectado"></strong> no aparece en la lista.</p>
-                <p class="small text-muted">Por favor, regístralo para continuar.</p>
-            `);
             $('#lblMinistroDetectado').text(nombreCompleto);
+            $('#lblActaPertenece').text(item.acta);
+            
+            // Cargar combo de existentes y mostrar sección
+            $('#divExistente').show();
+            $('#selMinistroExistente').html(generarOpcionesMinistros());
             
             // Intentar separar nombre y apellido
             let partes = nombreCompleto.split(' ');
@@ -882,7 +898,6 @@
             $('#newMinNom').val(nom);
             $('#newMinApe').val(ape);
             $('#newMinJer').val('');
-            $('#btnOmitirMinistro').show();
             
             const el = document.getElementById('modalNuevoMinistro');
             const modal = bootstrap.Modal.getOrCreateInstance(el);
@@ -896,22 +911,35 @@
             $('#newMinNom').val('');
             $('#newMinApe').val('');
             $('#newMinJer').val('');
-            $('#btnOmitirMinistro').hide();
+            $('#lblActaPertenece').text('Manual');
+            $('#divExistente').hide(); // No tiene sentido sugerir si vienen de clicar el "+"
             
             const el = document.getElementById('modalNuevoMinistro');
             const modal = bootstrap.Modal.getOrCreateInstance(el);
             modal.show();
         }
 
-        function omitirRegistroMinistro() {
-            if (colaMinistros.length > 0) {
-                colaMinistros.shift();
-                mostrarModalMinistro();
-            } else {
-                const el = document.getElementById('modalNuevoMinistro');
-                const modal = bootstrap.Modal.getOrCreateInstance(el);
-                modal.hide();
+        function usarMinistroExistente() {
+            let idMin = $('#selMinistroExistente').val();
+            let nombreMin = $('#selMinistroExistente option:selected').text();
+
+            if (!idMin) {
+                Swal.fire('Atención', 'Seleccione un ministro de la lista o regístrelo abajo.', 'warning');
+                return;
             }
+
+            const itemIA = colaMinistros[0];
+            if (itemIA) {
+                actasPendientes.forEach(a => {
+                    let aMinistro = (a['Ministro'] || '').trim().replace(/\s+/g, ' ');
+                    if (aMinistro.toLowerCase() === itemIA.nombre.toLowerCase()) {
+                        a['Ministro'] = nombreMin;
+                    }
+                });
+            }
+
+            colaMinistros.shift();
+            mostrarModalMinistro();
         }
 
         function guardarNuevoMinistro() {
@@ -937,10 +965,10 @@
                     if (colaMinistros.length > 0) {
                         // 🔹 ACTUALIZAR ACTAS PENDIENTES (Flujo IA)
                         // Actualizamos el nombre en las actas pendientes para que coincida con el registrado
-                        const nombreIA = colaMinistros[0]; 
+                        const itemIA = colaMinistros[0]; 
                         actasPendientes.forEach(a => {
                             let aMinistro = (a['Ministro'] || '').trim().replace(/\s+/g, ' ');
-                            if (aMinistro.toLowerCase() === nombreIA.toLowerCase()) {
+                            if (aMinistro.toLowerCase() === itemIA.nombre.toLowerCase()) {
                                 a['Ministro'] = nuevoNombre;
                             }
                         });
