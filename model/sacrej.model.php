@@ -290,11 +290,14 @@ class sacrejmodel
                 throw new Exception("Error al registrar celebración: " . $stmtCel->error);
             }
 
+            // 🔹 Capturar el ID (PK) generado para la tabla celebracion
+            $idCelebracionInterno = $this->conexion->insert_id;
+
             // 3️⃣ RELACIÓN individuo ↔ celebración
             $sqlRel = "INSERT INTO individuo_celebracion (IdInd, IdCel, RegCiv, NotMar, IdImgActa, EstCel)
                     VALUES (?, ?, ?, ?, ?, ?)";
             $stmtRel = $this->conexion->prepare($sqlRel);
-            $stmtRel->bind_param("sissii", $individuo['IdInd'], $celebracion['IdCel'], $enlace['RegCiv'], $enlace['NotMar'], $idImgActa, $enlace['EstCel']);
+            $stmtRel->bind_param("iissii", $individuo['IdInd'], $idCelebracionInterno, $enlace['RegCiv'], $enlace['NotMar'], $idImgActa, $enlace['EstCel']);
             if (!$stmtRel->execute()) {
                 throw new Exception("Error al vincular individuo con celebración: " . $stmtRel->error);
             }
@@ -552,6 +555,7 @@ class sacrejmodel
     {
         // IdCel, datos del individuo, fecha de nacimiento y fecha de celebración
         $sql = "SELECT 
+                    c.Id,
                     c.IdCel,
                     i.IdInd,
                     i.NomInd,
@@ -564,7 +568,7 @@ class sacrejmodel
                     img.UrlArchivo,
                     img.NombreDigitalizador
                 FROM celebracion c
-                INNER JOIN individuo_celebracion ic ON ic.IdCel = c.IdCel
+                INNER JOIN individuo_celebracion ic ON ic.IdCel = c.Id
                 INNER JOIN individuos i ON i.IdInd = ic.IdInd
                 LEFT JOIN ministro_celebrante m ON m.IdMinCel = c.IdMin
                 LEFT JOIN ImgActas img ON img.IdImg = ic.IdImgActa
@@ -578,9 +582,9 @@ class sacrejmodel
     public function obtener_datos_bautizo_por_id($idCel)
     {
         // 1. Datos principales
-        $sql = "SELECT c.*, ic.RegCiv, ic.NotMar, ic.IdImgActa, i.*, img.UrlArchivo, img.NombreDigitalizador
+        $sql = "SELECT c.*, ic.RegCiv, ic.NotMar, ic.IdImgActa, i.*, img.UrlArchivo, img.NombreDigitalizador, ic.EstCel
                 FROM celebracion c
-                JOIN individuo_celebracion ic ON c.IdCel = ic.IdCel
+                JOIN individuo_celebracion ic ON c.Id = ic.IdCel
                 JOIN individuos i ON ic.IdInd = i.IdInd
                 LEFT JOIN ImgActas img ON ic.IdImgActa = img.IdImg
                 WHERE c.IdCel = ?";
@@ -630,7 +634,7 @@ class sacrejmodel
     {
         $this->conexion->begin_transaction();
         try {
-            $idCel = $data['IdCel'];
+            $idInterno = $data['Id']; // Primary Key 'Id'
             $idInd = $data['IdInd'];
 
             // 1. Actualizar Individuo
@@ -643,10 +647,11 @@ class sacrejmodel
             $stmtInd->close();
 
             // 2. Actualizar Celebración
-            $sqlCel = "UPDATE celebracion SET FechCel=?, NumLib=?, NumFol=?, IdMin=?, Lugar=? WHERE IdCel=?";
+            // Ahora incluimos IdCel (número de acta) en el SET y filtramos por Id (PK)
+            $sqlCel = "UPDATE celebracion SET IdCel=?, FechCel=?, NumLib=?, NumFol=?, IdMin=?, Lugar=? WHERE Id=?";
             $stmtCel = $this->conexion->prepare($sqlCel);
-            $stmtCel->bind_param("siiisi", 
-                $data['FechCel'], $data['NumLib'], $data['NumFol'], $data['IdMin'], $data['Lugar'], $idCel
+            $stmtCel->bind_param("isiiisi", 
+                $data['IdCel'], $data['FechCel'], $data['NumLib'], $data['NumFol'], $data['IdMin'], $data['Lugar'], $idInterno
             );
             $stmtCel->execute();
             $stmtCel->close();
@@ -654,7 +659,7 @@ class sacrejmodel
             // 3. Actualizar Enlace (RegCiv, NotMar)
             $sqlRel = "UPDATE individuo_celebracion SET RegCiv=?, NotMar=?, EstCel=? WHERE IdCel=? AND IdInd=?";
             $stmtRel = $this->conexion->prepare($sqlRel);
-            $stmtRel->bind_param("ssiis", $data['RegCiv'], $data['NotMar'], $data['EstCel'], $idCel, $idInd);
+            $stmtRel->bind_param("ssiis", $data['RegCiv'], $data['NotMar'], $data['EstCel'], $idInterno, $idInd);
             $stmtRel->execute();
             $stmtRel->close();
 
@@ -716,6 +721,7 @@ class sacrejmodel
     public function obtener_reporte_bautizados()
     {
         $sql = "SELECT 
+                    c.Id,
                     c.IdCel,
                     i.IdInd,
                     i.NomInd,
@@ -729,7 +735,7 @@ class sacrejmodel
                     img.UrlArchivo,
                     img.NombreDigitalizador
                 FROM celebracion c
-                INNER JOIN individuo_celebracion ic ON ic.IdCel = c.IdCel
+                INNER JOIN individuo_celebracion ic ON ic.IdCel = c.Id
                 INNER JOIN individuos i ON i.IdInd = ic.IdInd
                 LEFT JOIN ImgActas img ON ic.IdImgActa = img.IdImg
                 WHERE c.TipCel = 1
@@ -742,7 +748,7 @@ class sacrejmodel
     public function obtener_bautizos_completo()
     {
         $sql = "SELECT 
-                    c.IdCel, c.FechCel, c.NumLib, c.NumFol, c.Lugar AS LugarBautizo,
+                    c.Id, c.IdCel, c.FechCel, c.NumLib, c.NumFol, c.Lugar AS LugarBautizo,
                     i.IdInd, i.NomInd, i.ApeInd, i.FecNacInd, i.LugNacInd, i.SexInd, i.FilInd,
                     ic.RegCiv, ic.NotMar,
                     m.Nom AS MinNom, m.Ape AS MinApe,
@@ -752,7 +758,7 @@ class sacrejmodel
                     -- Concatenar Padrinos
                     GROUP_CONCAT(DISTINCT CONCAT(padr.Nom, ' ', padr.Ape) SEPARATOR ' / ') AS Padrinos
                 FROM celebracion c
-                INNER JOIN individuo_celebracion ic ON ic.IdCel = c.IdCel
+                INNER JOIN individuo_celebracion ic ON ic.IdCel = c.Id
                 INNER JOIN individuos i ON i.IdInd = ic.IdInd
                 LEFT JOIN ministro_celebrante m ON m.IdMinCel = c.IdMin
                 LEFT JOIN padres pad ON pad.IdInd = i.IdInd
@@ -770,6 +776,7 @@ class sacrejmodel
     public function obtener_detalle_celebracion($idCel)
     {
         $sql = "SELECT 
+                    c.Id,
                     c.IdCel,
                     c.FechCel,
                     c.NumLib,
@@ -798,7 +805,7 @@ class sacrejmodel
                     img.UrlArchivo,
                     img.NombreDigitalizador
                 FROM celebracion c
-                INNER JOIN individuo_celebracion ic ON ic.IdCel = c.IdCel
+                INNER JOIN individuo_celebracion ic ON ic.IdCel = c.Id
                 INNER JOIN individuos i            ON i.IdInd = ic.IdInd
                 LEFT JOIN tipo_celebracion tc      ON tc.IdTip = c.TipCel
                 LEFT JOIN padres pad               ON pad.IdInd = i.IdInd
@@ -917,7 +924,7 @@ class sacrejmodel
                 min.Ape AS MinApe
 
             FROM celebracion c
-            INNER JOIN individuo_celebracion ic ON ic.IdCel = c.IdCel
+            INNER JOIN individuo_celebracion ic ON ic.IdCel = c.Id
             INNER JOIN individuos ind           ON ind.IdInd = ic.IdInd
 
             LEFT JOIN padres m   ON m.IdInd   = ind.IdInd AND m.Sex = 2  -- Madre

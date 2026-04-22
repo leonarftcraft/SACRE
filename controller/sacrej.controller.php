@@ -874,33 +874,53 @@ class SacrejController
         }
         $ministrosString = implode(", ", $listaMinistros);
 
-        $instruccionesOCR = 'Realiza una extracción de texto de la imagen proporcionada mediante un análisis exhaustivo carácter por carácter (OCR de alta precisión). La imagen contiene una o más actas de Fe de Bautismo. Debes identificar cada letra, número y carácter especial, considerando caligrafía antigua o manuscrita.
-
-Antes de comenzar la transcripción, lee todas las instrucciones a continuación y aplícalas rigurosamente.
-
-## Instrucciones paso a paso:
-
-    - **Diferenciación de letras confusas:** Presta especial atención a la distinción entre \'B\' y \'D\' mayúsculas.
-    - **Regla para la \'S\' sola:** Ignora cualquier \'S\' que se aparezca a un & y que esté sola.
-    - **Fidelidad de datos:** Mantén la ortografía, acentuación y abreviaturas exactas del documento original. Si un dato no es legible o no existe, usa `null`.
-**Control sobre Fechas:**
-Las fechas extraídas deben ser interpretadas en formato DD/MM/YYYY. 
-**Control sobre todas las claves:**
-Si alguna clave no la encuentras en la imagen ponle null.  
-**Cuando extraigas la clave N° extrae el numero sin "." y ","**
- **Control sobre la clave Filiacion:** Analiza y asigna: "Reconocido", "Legítimo", "Natural", "Ilegítimo" o "No reconocido".
-**Control sobre el Sexo del Bautizado:** 
-Determina el sexo a partir del nombre o el contexto del acta. Asigna estrictamente: "Masculino" o "Femenino".
-**Control Folio N°:**
-El folio N. lo puedes encontrar como folio o como un número en la parte superior.
-**Estructura de los datos:**
-    Devuelve SIEMPRE un arreglo JSON `[...]`.
-
-    ```json
-    [{"Nombre del Bautizado":"","Apellido del Bautizado":"","Sexo del Bautizado":"","Nombre del Padre":"","Apellido del Padre":"","Nombre de la Madre":"","Apellido de la Madre":"","Filiacion":"","Lugar de nacimiento":"","Fecha de nacimiento":"","Fecha de bautizo":"","Nombre de la Madrina":"","Apellido de la madrina":"","Nombre del Padrino":"","Apellido del Padrino":"","Ministro":"","N°":"","Folio N°":"","Observaciones":"","Registro Civil":""}]
-    ```
-
-    Ministros autorizados: (' . $ministrosString . ').';
+        $instruccionesOCR = 'Actúa como un experto en paleografía y sistemas avanzados de reconocimiento óptico de caracteres (OCR). Tu objetivo es realizar una extracción de texto de la imagen proporcionada mediante un análisis exhaustivo carácter por carácter. La imagen contiene una o más actas de Fe de Bautismo.
+Antes de comenzar, lee estas instrucciones y aplícalas rigurosamente:
+1. REGLAS DE FIDELIDAD Y ESTRUCTURA DE FORMULARIO
+•	Detección de Formulario Mixto: El documento contiene texto impreso (fijo) y texto manuscrito (variable). Debes priorizar la extracción de la información manuscrita para llenar las claves del JSON.
+•	Transcripción Exacta: Mantén la ortografía, acentuación y abreviaturas exactas del manuscrito original.
+•	Valores Nulos: Si una clave no tiene información escrita en el espacio correspondiente o el dato no existe, usa estrictamente null (sin comillas).
+•	Validación contextual: Usa el texto impreso como guía para identificar qué dato sigue (ej. después de "Nació en:" busca el lugar de nacimiento).
+2. REGLAS DE EXTRACCIÓN ESPECÍFICA (LÓGICA DE NEGOCIO)
+•	Fechas: Localiza las fechas de nacimiento y bautizo. Debes interpretarlas y convertirlas al formato estándar DD/MM/YYYY. Si solo aparece el año y mes, completa lo que sea legible.
+•	Número de Acta (N°): Identifica el número correlativo del acta. Extrae solo los dígitos, eliminando puntos (".") o comas (",") que puedan aparecer como separadores de miles.
+•	Filiación: Clasifica según el contenido del acta en una de estas categorías: "Reconocido", "Legítimo", "Natural", "Ilegítimo" o "No reconocido".
+•	Sexo del Bautizado: Determina el sexo analizando el nombre (ej. "María" vs "Juan") o artículos en el texto impreso/manuscrito (ej. "hijo" vs "hija"). Asigna: "Masculino" o "Femenino".
+•	Folio N°: Busca el número en la parte superior derecha o izquierda de la página, o donde se indique "Folio".
+•	Observaciones (Lógica de consolidación): Esta clave debe incluir información de dos posibles fuentes:
+1.	El texto manuscrito que sigue a la palabra impresa "Observación" u "Observaciones".
+2.	Cualquier Nota Marginal escrita en el margen izquierdo del acta (usualmente situada debajo del número de registro).
+o	Regla de aplicación: Si existen ambas (texto en campo de observación y nota marginal), concaténalas en un solo párrafo. Si no existe la palabra impresa "Observación", utiliza la nota marginal como contenido principal de esta clave.
+•	Registro Civil: Extrae anotaciones sobre Tomo, Acta y Año de la inscripción civil si están presentes.
+3. FORMATO DE SALIDA (JSON ÚNICAMENTE)
+Genera un arreglo de objetos JSON con la siguiente estructura exacta. No añadas comentarios ni texto fuera del bloque de código.
+JSON
+[
+  {
+    "Nombre del Bautizado": "",
+    "Apellido del Bautizado": "",
+    "Sexo del Bautizado": "",
+    "Nombre del Padre": "",
+    "Apellido del Padre": "",
+    "Nombre de la Madre": "",
+    "Apellido de la Madre": "",
+    "Filiacion": "",
+    "Lugar de nacimiento": "",
+    "Fecha de nacimiento": "",
+    "Fecha de bautizo": "",
+    "Nombre de la Madrina": "",
+    "Apellido de la madrina": "",
+    "Nombre del Padrino": "",
+    "Apellido del Padrino": "",
+    "Ministro": "",
+    "N°": "",
+    "Folio N°": "",
+    "Observaciones": "",
+    "Registro Civil": ""
+  }
+]
+•	Ministro: si el nombre de esta clave se parece aunque sea un poco con uno 
+de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $ministrosString . ').';
 
         // 4. Obtener la API Key específicamente asignada a este usuario
         $apiKeys = $this->_leer_api_keys();

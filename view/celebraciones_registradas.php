@@ -278,6 +278,7 @@ $jerarquias = $this->model->obtener_todos("jerarquia_ministro");
       </div>
       <div class="modal-body">
         <form id="formEditarBautizo">
+            <input type="hidden" name="Id" id="editId">
             <input type="hidden" name="IdCel" id="editIdCel">
             <input type="hidden" name="IdInd" id="editIdInd">
 
@@ -595,6 +596,7 @@ $(document).ready(function() {
               const padrinos = res.data.padrinos;
 
               // Llenar campos principales
+              $("#editId").val(d.Id);
               $("#editIdCel").val(d.IdCel);
               $("#editIdInd").val(d.IdInd);
               $("#editNumLib").val(d.NumLib);

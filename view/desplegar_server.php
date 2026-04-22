@@ -44,7 +44,7 @@
         <div class="col-md-8">
             <div class="card shadow-sm">
                 <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">📋 Datos de Bautizados</h5>
+                    <h5 class="mb-0">📋 Datos de Bautizados <span class="badge bg-white text-info ms-2"><?= $listaBautizados ? $listaBautizados->num_rows : 0 ?></span></h5>
                     <button class="btn btn-light btn-sm fw-bold" onclick="exportarExcel()">
                         📥 Exportar a Excel
                     </button>
@@ -69,10 +69,12 @@
                                 <?php 
                                 // Reiniciamos el puntero si se usó antes, aunque aquí es nuevo
                                 if ($listaBautizados):
+                                    $contador = 1;
                                     foreach ($listaBautizados as $row): 
                                 ?>
                                 <tr>
-                                    <td><?= htmlspecialchars($row['IdInd']) ?></td>
+                            
+                                    <td><?= $contador++; ?></td>
                                     <td><?= htmlspecialchars($row['NomInd']) ?></td>
                                     <td><?= htmlspecialchars($row['ApeInd']) ?></td>
                                     <td><?= ($row['FecNacInd'] && $row['FecNacInd'] !== '0000-00-00') ? date('d/m/Y', strtotime($row['FecNacInd'])) : '' ?></td>
