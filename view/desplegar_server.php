@@ -407,6 +407,46 @@ function enviarWhatsapp() {
     window.open("https://wa.me/?text=" + encodeURIComponent(texto), '_blank');
 }
 
+// 🔹 Función auxiliar para limpiar texto (seguridad)
+function htmlspecialchars(str) {
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>"']/g, function(m) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+    });
+}
+
+// 🔹 Función para actualizar la tabla de bautizos registrados dinámicamente
+function actualizarTablaCompleta() {
+    $.get('?controller=sacrej&action=api_obtener_bautizos_registrados', function(data) {
+        let html = '';
+        if (data && data.length > 0) {
+            let displayCounter = 1;
+            data.forEach(row => {
+                // 🛡️ Formateo seguro de fechas (Evita desfases de zona horaria)
+                let fecNac = "";
+                if (row.FecNacInd && row.FecNacInd !== '0000-00-00') {
+                    let p = row.FecNacInd.split('-');
+                    fecNac = p[2] + '/' + p[1] + '/' + p[0];
+                }
+                let fecBaut = "";
+                if (row.FechCel && row.FechCel !== '0000-00-00') {
+                    let p = row.FechCel.split('-');
+                    fecBaut = p[2] + '/' + p[1] + '/' + p[0];
+                }
+                
+                let btnImagen = row.UrlArchivo ? `<a href="${row.UrlArchivo}" target="_blank" class="btn btn-sm btn-success ms-1" title="Ver Imagen">📷</a>` : '';
+                
+                html += `<tr><td>${displayCounter++}</td><td>${htmlspecialchars(row.NomInd)}</td><td>${htmlspecialchars(row.ApeInd)}</td><td>${fecNac}</td><td>${fecBaut}</td><td>${htmlspecialchars(row.NumLib)}</td><td>${htmlspecialchars(row.NumFol)}</td><td class="text-nowrap">${btnImagen}</td></tr>`;
+            });
+        } else {
+            html = '<tr><td colspan="8" class="text-center text-muted">No hay registros de bautizos.</td></tr>';
+        }
+        $('#tablaCompleta tbody').html(html);
+        // Actualizar el contador en la cabecera de la tabla
+        $('.badge.bg-white.text-info').text(data ? data.length : 0);
+    }, 'json');
+}
+
 // 🔹 Lógica para actualizar lista de clientes conectados (Polling)
 function actualizarClientes() {
     $.ajax({
@@ -437,6 +477,7 @@ function actualizarClientes() {
                 let etiquetaEstado = "";
                 if (c.status === 'pending') etiquetaEstado = "En espera";
                 else if (c.processing === true || c.processing === "true" || c.processing == 1) etiquetaEstado = "Procesando...";
+                else if (c.verifying === true || c.verifying === "true" || c.verifying == 1) etiquetaEstado = "Verificando...";
 
                 let contenidoInactividad = (etiquetaEstado !== "") 
                     ? `<span class="badge bg-primary w-100 animate-pulse-slow">${etiquetaEstado}</span>` 
@@ -506,31 +547,67 @@ function actualizarPendientes() {
         $('#contadorPendientes').text(datosPendientes.length);
         let html = '';
         if (datosPendientes.length > 0) {
-            // Mostrar los más recientes primero (iterar al revés)
+            // 🧠 Lógica de Agrupación por Captura (Folio)
+            let groups = [];
+            let map = {};
+
             for (let i = datosPendientes.length - 1; i >= 0; i--) {
                 let row = datosPendientes[i];
-                let nombre = (row.NomInd || '') + ' ' + (row.ApeInd || '');
-                let fecha = row.FecNacInd || '';
-                
-                let btnImagen = '';
-                if (row.RutaImagen) {
-                    btnImagen = `<a href="${row.RutaImagen}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver Imagen">📷</a>`;
+                let key = row.RutaImagen || ('manual-' + i); // Usar ruta como ID de grupo
+                if (map[key] === undefined) {
+                    map[key] = groups.length;
+                    groups.push({
+                        ruta: key,
+                        usuario: row.usuario_envio || 'Anónimo',
+                        libro: row.NumLib || '',
+                        folio: row.NumFol || '',
+                        indices: [],
+                        items: []
+                    });
                 }
-
-                html += `<tr>
-                    <td>📱 ${row.usuario_envio || 'Anónimo'}</td>
-                    <td>${nombre}</td>
-                    <td>${fecha}</td>
-                    <td>${row.NumLib || ''}</td>
-                    <td>${row.NumFol || ''}</td>
-                    <td>${btnImagen}</td>
-                    <td>
-                        <button class="btn btn-sm btn-success" onclick="guardarPendiente(${i})" title="Guardar en BD">💾</button>
-                        <button class="btn btn-sm btn-warning" onclick="editarPendiente(${i})" title="Editar">✏️</button>
-                        <button class="btn btn-sm btn-danger" onclick="eliminarPendiente(${i})" title="Eliminar">🗑️</button>
-                    </td>
-                </tr>`;
+                groups[map[key]].items.push(row);
+                groups[map[key]].indices.push(i);
             }
+
+            groups.forEach(group => {
+                let n = group.items.length;
+                group.items.forEach((item, idx) => {
+                    let nombre = (item.NomInd || '') + ' ' + (item.ApeInd || '');
+                    let fecha = item.FecNacInd || '';
+                    let rowStyle = idx === 0 ? 'border-top: 3px solid #dee2e6;' : '';
+                    
+                    html += `<tr style="${rowStyle}">`;
+                    
+                    if (idx === 0) {
+                        html += `<td rowspan="${n}" class="align-middle">📱 ${group.usuario}</td>`;
+                    }
+
+                    html += `
+                        <td class="${idx < n - 1 ? 'border-bottom-0' : ''}">${nombre}</td>
+                        <td class="${idx < n - 1 ? 'border-bottom-0' : ''}">${fecha}</td>
+                    `;
+
+                    if (idx === 0) {
+                        let btnImg = group.ruta.includes('view/images') 
+                            ? `<a href="${group.ruta}" target="_blank" class="btn btn-sm btn-outline-primary">📷</a>` 
+                            : '<span class="text-muted small">Manual</span>';
+
+                        html += `
+                            <td rowspan="${n}" class="align-middle text-center">${group.libro}</td>
+                            <td rowspan="${n}" class="align-middle text-center">${group.folio}</td>
+                            <td rowspan="${n}" class="align-middle text-center">${btnImg}</td>
+                            <td rowspan="${n}" class="align-middle text-center">
+                                <div class="d-grid gap-1">
+                                    <button class="btn btn-sm btn-success" onclick="guardarGrupo('${group.ruta}', ${group.indices[0]})">💾 Todo</button>
+                                    <button class="btn btn-sm btn-warning" onclick="editarDesdeGrupo('${JSON.stringify(group.indices)}')">✏️ Editar</button>
+                                    <button class="btn btn-sm btn-danger" onclick="eliminarPendiente(${group.indices[0]})">🗑️ Todo</button>
+                                </div>
+                            </td>
+                        `;
+                    }
+                    html += `</tr>`;
+                });
+            });
         } else {
             html = '<tr><td colspan="7" class="text-center text-muted">No hay registros pendientes.</td></tr>';
         }
@@ -539,6 +616,51 @@ function actualizarPendientes() {
 }
 setInterval(actualizarPendientes, 3000);
 actualizarPendientes();
+
+function guardarGrupo(ruta, fallbackIndex) {
+    Swal.fire({
+        title: '¿Guardar este folio?',
+        text: "Se registrarán permanentemente todos los bautizos de esta página.",
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, guardar grupo',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            Swal.fire({ title: 'Guardando...', didOpen: () => Swal.showLoading() });
+            
+            let isManual = ruta.startsWith('manual-');
+            let action = isManual ? 'api_aprobar_bautizo_temporal' : 'api_aprobar_grupo_temporal';
+            let data = isManual ? { index: fallbackIndex } : { ruta: ruta };
+
+            $.post('?controller=sacrej&action=' + action, data, function(res) {
+                if (res.status === 'ok') {
+                    // 🔄 Actualizar tablas INMEDIATAMENTE tras el OK del servidor
+                    actualizarPendientes();
+                    actualizarTablaCompleta();
+                    Swal.fire('Éxito', res.msg, 'success');
+                } else {
+                    Swal.fire('Error', res.msg, 'error');
+                }
+            }, 'json');
+        }
+    });
+}
+
+function editarDesdeGrupo(indicesJson) {
+    const indices = JSON.parse(indicesJson);
+    if (indices.length === 1) { editarPendiente(indices[0]); return; }
+    
+    let html = '<div class="list-group">';
+    indices.forEach(i => {
+        let d = datosPendientes[i];
+        let n = (d.NomInd || '') + ' ' + (d.ApeInd || '');
+        html += `<button type="button" class="list-group-item list-group-item-action text-start" onclick="Swal.close(); editarPendiente(${i})">✏️ ${n}</button>`;
+    });
+    html += '</div>';
+
+    Swal.fire({ title: 'Seleccione registro', html: html, showConfirmButton: false, showCancelButton: true, cancelButtonText: 'Cerrar' });
+}
 
 function guardarPendiente(index) {
     Swal.fire({
@@ -553,9 +675,10 @@ function guardarPendiente(index) {
             // Ejecutar Guardado Real
             Swal.fire({ title: 'Guardando...', didOpen: () => Swal.showLoading() });
             $.post('?controller=sacrej&action=api_aprobar_bautizo_temporal', { index: index }, function(saveRes) {
-                Swal.close();
                 if (saveRes.status === 'ok') {
-                    Swal.fire('Guardado', saveRes.msg, 'success').then(() => location.reload());
+                    actualizarPendientes();
+                    actualizarTablaCompleta();
+                    Swal.fire('Guardado', saveRes.msg, 'success');
                 } else {
                     Swal.fire('Error', saveRes.msg, 'error');
                 }
@@ -567,9 +690,9 @@ function guardarPendiente(index) {
 function guardarTodosPendientes() {
     Swal.fire({ title: 'Procesando...', didOpen: () => Swal.showLoading() });
     $.post('?controller=sacrej&action=api_aprobar_todos_bautizos_temporales', function(res) {
-        Swal.close();
-        Swal.fire('Proceso finalizado', `Guardados: ${res.guardados}, Errores: ${res.errores}`, 'info')
-            .then(() => location.reload());
+        actualizarPendientes();
+        actualizarTablaCompleta();
+        Swal.fire('Proceso finalizado', `Guardados: ${res.guardados}, Errores: ${res.errores}`, 'info');
     }, 'json');
 }
 
@@ -788,6 +911,7 @@ $(document).on('click', '.btnDetalle', function() {
 $(document).ready(function() {
     // Iniciar verificación de la IA al cargar
     verificarEstadoIA();
+    actualizarTablaCompleta(); // 🏁 Cargar datos iniciales dinámicamente
     setInterval(verificarEstadoIA, 5000);
 
     // Desactivar servidor automáticamente solo al navegar a otra opción del menú

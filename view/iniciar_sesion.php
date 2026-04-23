@@ -147,8 +147,9 @@
                     url: $(this).attr('action'),
                     method: 'POST',
                     data: $(this).serialize(),
-                    success: function(response) {
-                        if (response == 1) {
+                    success: function(res) {
+                        let response = String(res).trim(); // 🧼 Eliminar espacios en blanco
+                        if (response === "1") {
                             Swal.fire({
                                 title: "Iniciando Sesión",
                                 html: "En breves será redirigido",
@@ -158,7 +159,7 @@
                             }).then(() => {
                                 window.location.href = '?controller=sacrej&action=index';
                             });
-                        } else if (response == 0) {
+                        } else if (response === "0") {
                             Swal.fire({
                                 icon: "error",
                                 title: "Oops...",

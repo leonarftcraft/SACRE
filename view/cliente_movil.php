@@ -187,6 +187,7 @@
     <script>
         let usuarioActual = "";
         let estaProcesando = false; // ✅ Flag de estado
+        let estaVerificando = false; // 🔍 Nuevo estado: Introduciendo libro o en formulario
         let avisoInactividadMostrado = false; // 🛡️ Evitar repetición del mensaje
         let libroActual = null;
         let folioActual = null;
@@ -234,7 +235,13 @@
         }
 
         function volverACamara() {
+            // 🗑️ Borrar la imagen del servidor si el cliente decide volver sin guardar
+            if (rutaImagenActual) {
+                $.post('?controller=sacrej&action=api_borrar_imagen_cancelada', { ruta: rutaImagenActual });
+            }
+
             estaProcesando = false; // ✅ Liberar estado al volver
+            estaVerificando = false; // 🔍 Regresar a estado normal
             toggleCaptureButtons(false); // ✅ Asegurar que botones estén activos
             $('#screen-form').addClass('hidden');
             $('#screen-camera').removeClass('hidden');
@@ -578,7 +585,14 @@
                 
                 const formData = new FormData();
                 const modelIA = $('#modelSelector').val();
-                formData.append('imagen', file);
+
+                // 🚀 Evitar resubir la imagen si ya tenemos una ruta del intento anterior (ahorra datos y espacio)
+                if (rutaImagenActual) {
+                    formData.append('image_path', rutaImagenActual);
+                } else {
+                    formData.append('imagen', file);
+                }
+
                 formData.append('usuario_envio', usuarioActual); // Ajustado para coincidir con la validación del controlador
                 formData.append('modelo_ia', modelIA);
 
@@ -800,9 +814,12 @@
                                     allowOutsideClick: () => !Swal.isLoading()
                                 }).then((result) => {
                                     if (result.isConfirmed) {
+                                        estaVerificando = true; // 🔍 Iniciando verificación al pedir libro
                                         libroActual = result.value;
                                         $('#libroGeneral').val(libroActual);
                                         procesarRespuestaIA();
+                                    } else {
+                                        estaVerificando = false;
                                     }
                                 });
                             }
@@ -814,6 +831,12 @@
                     },
                     error: function(xhr) {
                         if (xhr.status === 503) {
+                            // 🧠 Recuperar la ruta de la imagen que el servidor ya guardó antes del error de IA
+                            try {
+                                const resErr = JSON.parse(xhr.responseText);
+                                if (resErr.image_path) rutaImagenActual = resErr.image_path;
+                            } catch(e) {}
+
                             gestionarReintentoIA(input, file, numReintento + 1);
                             return;
                         }
@@ -995,6 +1018,7 @@
 
         function mostrarFormularios(actas) {
             $('#forms-container').empty();
+            estaVerificando = true; // 🔍 Activamos estado de verificación
 
             // Mostrar valores globales
             $('#folioGeneral').val(folioActual);
@@ -1023,6 +1047,7 @@
             $.post('?controller=sacrej&action=api_heartbeat', { 
                 nombre: usuarioActual,
                 processing: String(estaProcesando),
+                verifying: String(estaVerificando),
                 active: String(huboInteraccion), // ⚡ Informar actividad al servidor
                 modelo_ia: modelIA
             }, function(res) {

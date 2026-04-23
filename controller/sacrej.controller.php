@@ -117,6 +117,20 @@ class SacrejController
         require_once "view/layout.php";
     }
 
+    public function api_obtener_bautizos_registrados()
+    {
+        header('Content-Type: application/json');
+        $listaBautizados = $this->model->obtener_reporte_bautizados();
+        $data = [];
+        if ($listaBautizados) {
+            while ($row = $listaBautizados->fetch_assoc()) {
+                $data[] = $row;
+            }
+        }
+        echo json_encode($data);
+        exit;
+    }
+
     /* ============================================================
        🔑 GESTIÓN DE API KEYS (ARCHIVO ENCRIPTADO)
        ============================================================ */
@@ -126,8 +140,8 @@ class SacrejController
     }
     
     private function _get_enc_key() {
-        // Priorizar clave desde variable de entorno para mayor seguridad
-        return getenv('SACREJ_ENC_KEY') ?: 'CLAVE_SECRETA_SACREJ_2025_SEGURA'; 
+        // En producción, esto debería estar en una variable de entorno
+        return 'CLAVE_SECRETA_SACREJ_2025_SEGURA'; 
     }
 
     private function _leer_api_keys() {
@@ -658,6 +672,7 @@ class SacrejController
         $nombre = $_POST['nombre'] ?? '';
         // 🛡️ Detección estricta: solo es true si el móvil envía literalmente la cadena "true"
         $is_processing = isset($_POST['processing']) && $_POST['processing'] === 'true';
+        $is_verifying = isset($_POST['verifying']) && $_POST['verifying'] === 'true';
         $user_active = isset($_POST['active']) && $_POST['active'] === 'true';
         // Asegurar que si llega vacío use el valor por defecto
         $modeloIA = !empty($_POST['modelo_ia']) ? trim($_POST['modelo_ia']) : 'gemini-3.1-flash-lite-preview';
@@ -680,6 +695,7 @@ class SacrejController
                 if (isset($clientes[$nombre])) {
                     $clientes[$nombre]['last_seen'] = time();
                     $clientes[$nombre]['is_processing'] = (bool)$is_processing; // 🛡️ Guardar como booleano real
+                    $clientes[$nombre]['is_verifying'] = (bool)$is_verifying;
                     $status = $clientes[$nombre]['status'] ?? 'pending';
                     $apiEmail = $clientes[$nombre]['api_email'] ?? 'No asignada'; // 📌 Obtener llave del cliente
 
@@ -687,7 +703,7 @@ class SacrejController
                     $ia_info = $this->_gestionar_uso_api($apiEmail, $modeloIA);
 
                     // 🚀 Reiniciar el timer si está cargando IA, está en espera, o si el usuario interactuó
-                    if ($is_processing || $status === 'pending' || $user_active) {
+                    if ($is_processing || $is_verifying || $status === 'pending' || $user_active) {
                         $clientes[$nombre]['last_activity'] = time();
                     }
                     
@@ -765,11 +781,13 @@ class SacrejController
             $ls_fallback = is_array($d) ? ($d['last_seen'] ?? $ahora) : $d;
             $last_act = is_array($d) ? ($d['last_activity'] ?? $ls_fallback) : $ls_fallback;
             $is_proc = is_array($d) ? ($d['is_processing'] ?? false) : false;
+            $is_veri = is_array($d) ? ($d['is_verifying'] ?? false) : false;
             $lista[] = [
                 'nombre' => $n, 
                 'status' => is_array($d) ? ($d['status'] ?? 'pending') : 'allowed',
                 'inactividad' => $ahora - $last_act, // Tiempo transcurrido (aumentando)
-                'processing' => $is_proc
+                'processing' => $is_proc,
+                'verifying' => $is_veri
             ];
         }
         echo json_encode($lista);
@@ -808,6 +826,7 @@ class SacrejController
         header('Content-Type: application/json');
 
         $nombreCliente = $_POST['usuario_envio'] ?? '';
+        $rutaExistente = $_POST['image_path'] ?? '';
         // Validación más robusta del modelo recibido
         $modeloIA = (!empty($_POST['modelo_ia'])) ? trim($_POST['modelo_ia']) : 'gemini-3.1-flash-lite-preview';
         $archivoClientes = 'connected_clients.json';
@@ -837,30 +856,43 @@ class SacrejController
             exit;
         }
 
-        if (!isset($_FILES['imagen']) || $_FILES['imagen']['error'] !== UPLOAD_ERR_OK) {
-            $this->_actualizar_cliente_state($nombreCliente, false);
-            echo json_encode(['error' => 'No se recibió ninguna imagen válida.']);
-            exit;
+        $rutaFinal = '';
+        $data = '';
+
+        // 🔹 Si ya se subió en un intento previo, usar esa ruta física
+        if (!empty($rutaExistente)) {
+            $realPath = realpath($rutaExistente);
+            $baseDir = realpath('view/images/actas/');
+            if ($realPath && strpos($realPath, $baseDir) === 0 && file_exists($realPath)) {
+                $rutaFinal = $rutaExistente;
+                $data = file_get_contents($rutaFinal);
+            }
         }
 
-        // 2. Preparar imagen para Gemini
-        $path = $_FILES['imagen']['tmp_name'];
-        $type = $_FILES['imagen']['type'];
+        // 🔹 Si no hay ruta previa o la lectura falló, procesar la nueva subida
+        if (empty($data)) {
+            if (!isset($_FILES['imagen']) || $_FILES['imagen']['error'] !== UPLOAD_ERR_OK) {
+                $this->_actualizar_cliente_state($nombreCliente, false);
+                echo json_encode(['error' => 'No se recibió ninguna imagen válida.']);
+                exit;
+            }
 
-        $data = file_get_contents($path);
+            $path = $_FILES['imagen']['tmp_name'];
+            $data = file_get_contents($path);
         
-        // 🔹 GUARDAR IMAGEN EN BLOQUES (AÑO/MES)
-        $bloqueDir = 'view/images/actas/' . date('Y') . '/' . date('m') . '/';
-        if (!file_exists($bloqueDir)) {
-            mkdir($bloqueDir, 0777, true);
+            // 🔹 GUARDAR IMAGEN EN CARPETA TEMPORAL (PENDIENTE DE IDENTIFICAR LIBRO/FOLIO)
+            $bloqueDir = 'view/images/actas/temp/';
+            if (!file_exists($bloqueDir)) {
+                mkdir($bloqueDir, 0777, true);
+            }
+            
+            $extension = pathinfo($_FILES['imagen']['name'], PATHINFO_EXTENSION) ?: 'jpg';
+            $nombreArchivo = 'acta_' . time() . '_' . uniqid() . '.' . $extension;
+            $rutaFinal = $bloqueDir . $nombreArchivo;
+            
+            // Guardamos la copia física
+            file_put_contents($rutaFinal, $data);
         }
-        
-        $extension = pathinfo($_FILES['imagen']['name'], PATHINFO_EXTENSION) ?: 'jpg';
-        $nombreArchivo = 'acta_' . time() . '_' . uniqid() . '.' . $extension;
-        $rutaFinal = $bloqueDir . $nombreArchivo;
-        
-        // Guardamos una copia (move_uploaded_file movería el original, mejor copy si leemos $data antes)
-        file_put_contents($rutaFinal, $data);
 
         $base64 = base64_encode($data);
 
@@ -920,8 +952,7 @@ JSON
   }
 ]
 •	Ministro: si el nombre de esta clave se parece aunque sea un poco con uno 
-de esta lista usa el nombre de la lista en lugar del que estragiste,
- ahora si no aparece en la lista usa el nombre que estragiste: (' . $ministrosString . ').';
+de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $ministrosString . ').';
 
         // 4. Obtener la API Key específicamente asignada a este usuario
         $apiKeys = $this->_leer_api_keys();
@@ -965,7 +996,10 @@ de esta lista usa el nombre de la lista en lugar del que estragiste,
         if ($httpCode === 503) {
             http_response_code(503); // Informamos al navegador que es un error 503
             // No quitamos el flag de procesamiento aquí porque el cliente reintentará en breve
-            echo json_encode(['error' => 'Servidor de IA sobrecargado. Iniciando reintento automático.']);
+            echo json_encode([
+                'error' => 'Servidor de IA sobrecargado. Iniciando reintento automático.',
+                'image_path' => $rutaFinal // 👈 Devolvemos la ruta para el reintento
+            ]);
             exit;
         }
 
@@ -1122,6 +1156,32 @@ de esta lista usa el nombre de la lista en lugar del que estragiste,
         $datos = $_POST;
         $datos['timestamp'] = time();
         
+        // 📂 LÓGICA DE ALMACENAMIENTO ESTRUCTURADO (LIBRO/FOLIOS EN BLOQUES DE 30)
+        $rutaImagen = $datos['RutaImagen'] ?? '';
+        $libro = (int)($datos['NumLib'] ?? 0);
+        $folio = (int)($datos['NumFol'] ?? 0);
+
+        if (!empty($rutaImagen) && $libro > 0 && $folio > 0) {
+            // 1. Calcular rango de folios para la subcarpeta
+            $inicio = (floor(($folio - 1) / 30) * 30) + 1;
+            $fin = $inicio + 29;
+            $targetDir = "view/images/actas/Libro_$libro/Folios_$inicio-$fin/";
+            
+            if (!file_exists($targetDir)) {
+                mkdir($targetDir, 0777, true);
+            }
+
+            $nombreArchivo = basename($rutaImagen);
+            $nuevaRuta = $targetDir . $nombreArchivo;
+
+            // 2. Mover archivo de temp a su ubicación final organizada
+            if (file_exists($rutaImagen)) {
+                rename($rutaImagen, $nuevaRuta);
+            }
+            // Actualizar la ruta en el registro para el JSON de pendientes
+            $datos['RutaImagen'] = $nuevaRuta;
+        }
+
         $archivo = 'pending_bautizos.json';
         $pendientes = [];
         
@@ -1313,6 +1373,73 @@ de esta lista usa el nombre de la lista en lugar del que estragiste,
         exit;
     }
 
+    public function api_aprobar_grupo_temporal()
+    {
+        header('Content-Type: application/json');
+        $ruta = $_POST['ruta'] ?? '';
+        $archivo = 'pending_bautizos.json';
+
+        if (empty($ruta) || !file_exists($archivo)) {
+            echo json_encode(['status' => 'error', 'msg' => 'Datos no válidos o archivo inexistente.']);
+            exit;
+        }
+
+        $pendientes = json_decode(file_get_contents($archivo), true) ?? [];
+        $guardados = 0;
+        $errores = 0;
+        $nuevosPendientes = [];
+
+        foreach ($pendientes as $p) {
+            // Si coincide la ruta de imagen, intentamos guardarlo en BD
+            if (isset($p['RutaImagen']) && $p['RutaImagen'] === $ruta) {
+                try {
+                    $res = $this->_procesar_datos_bautizo($p);
+                    if ($res['status'] === 'ok') {
+                        $guardados++;
+                    } else {
+                        $nuevosPendientes[] = $p; // Mantener si hay error
+                        $errores++;
+                    }
+                } catch (Exception $e) {
+                    $nuevosPendientes[] = $p;
+                    $errores++;
+                }
+            } else {
+                $nuevosPendientes[] = $p; // Mantener registros de otros grupos
+            }
+        }
+
+        file_put_contents($archivo, json_encode($nuevosPendientes));
+        echo json_encode(['status' => 'ok', 'msg' => "Se guardaron $guardados registros correctamente. Errores: $errores"]);
+        exit;
+    }
+
+    public function api_borrar_imagen_cancelada()
+    {
+        header('Content-Type: application/json');
+        $ruta = $_POST['ruta'] ?? '';
+
+        if (empty($ruta)) {
+            echo json_encode(['status' => 'error', 'msg' => 'No se proporcionó la ruta.']);
+            exit;
+        }
+
+        // 🛡️ Seguridad: Solo permitir borrar si está dentro de la carpeta de actas
+        $realPath = realpath($ruta);
+        $baseDir = realpath('view/images/actas/');
+
+        if ($realPath && strpos($realPath, $baseDir) === 0 && file_exists($realPath)) {
+            if (unlink($realPath)) {
+                echo json_encode(['status' => 'ok', 'msg' => 'Imagen borrada correctamente.']);
+            } else {
+                echo json_encode(['status' => 'error', 'msg' => 'No se pudo borrar el archivo físico.']);
+            }
+        } else {
+            echo json_encode(['status' => 'error', 'msg' => 'Ruta no válida o el archivo no existe.']);
+        }
+        exit;
+    }
+
     public function api_aprobar_todos_bautizos_temporales()
     {
         header('Content-Type: application/json');
@@ -1440,6 +1567,9 @@ de esta lista usa el nombre de la lista en lugar del que estragiste,
     public function iniciar_sesion()
     {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (ob_get_length()) ob_clean(); // 🧹 Limpiar cualquier salida accidental previa
+            header('Content-Type: text/plain');
+
             $usuario = $_POST['usuario'] ?? '';
             $contrasena = $_POST['contrasena'] ?? '';
 
@@ -1804,8 +1934,8 @@ de esta lista usa el nombre de la lista en lugar del que estragiste,
         $nombre = $_POST['nombre'] ?? 'respaldo';
         $rutaDestino = $_POST['ruta'] ?? '';
 
-        // Normalizar y sanitizar ruta para evitar ataques de Directory Traversal
-        $rutaDestino = rtrim(str_replace(['\\', '..'], ['/', ''], $rutaDestino), '/');
+        // Normalizar ruta (Windows usa \, pero PHP maneja / bien)
+        $rutaDestino = rtrim(str_replace('\\', '/', $rutaDestino), '/');
 
         // Validar o crear carpeta
         if (!is_dir($rutaDestino)) {
