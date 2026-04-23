@@ -367,6 +367,18 @@ class sacrejmodel
     // ✅ Registrar nuevo ministro
    public function registrar_ministro($nom, $ape, $codJer) {
     try {
+        // 🛡️ Validar si ya existe un ministro con el mismo nombre y apellido
+        $sqlCheck = "SELECT IdMinCel FROM ministro_celebrante WHERE Nom = ? AND Ape = ?";
+        $stmtCheck = $this->conexion->prepare($sqlCheck);
+        $stmtCheck->bind_param("ss", $nom, $ape);
+        $stmtCheck->execute();
+        $resCheck = $stmtCheck->get_result();
+        if ($resCheck->num_rows > 0) {
+            $stmtCheck->close();
+            return ['status' => 'error', 'msg' => 'Ya existe un ministro registrado con ese nombre y apellido.'];
+        }
+        $stmtCheck->close();
+
         $sql = "INSERT INTO ministro_celebrante (Nom, Ape, CodJer) VALUES (?, ?, ?)";
         $stmt = $this->conexion->prepare($sql);
         if (!$stmt) {
@@ -388,7 +400,8 @@ class sacrejmodel
     // 🔹 Obtener todos los ministros con su jerarquía (JOIN)
     public function obtener_ministros_con_jerarquia()
     {
-        $sql = "SELECT m.IdMinCel, m.Nom, m.Ape, j.NomJer 
+        $sql = "SELECT m.IdMinCel, m.Nom, m.Ape, j.NomJer,
+                       (SELECT COUNT(*) FROM celebracion WHERE IdMin = m.IdMinCel) as TotalCelebraciones
                 FROM ministro_celebrante m
                 LEFT JOIN jerarquia_ministro j ON m.CodJer = j.CodJer
                 ORDER BY m.IdMinCel ASC";
@@ -402,6 +415,43 @@ class sacrejmodel
         return $result;
     }
 
+    // 🗑️ Eliminar ministro con validación
+    public function eliminar_ministro($idMin) {
+        // Verificar si tiene celebraciones asociadas
+        $sqlCheck = "SELECT COUNT(*) as total FROM celebracion WHERE IdMin = ?";
+        $stmt = $this->conexion->prepare($sqlCheck);
+        $stmt->bind_param("i", $idMin);
+        $stmt->execute();
+        $res = $stmt->get_result()->fetch_assoc();
+        
+        if ($res['total'] > 0) {
+            return ['status' => 'error', 'msg' => 'No se puede eliminar un ministro que ya tiene celebraciones registradas.'];
+        }
+        
+        $sql = "DELETE FROM ministro_celebrante WHERE IdMinCel = ?";
+        $stmt = $this->conexion->prepare($sql);
+        $stmt->bind_param("i", $idMin);
+        
+        if ($stmt->execute()) {
+            return ['status' => 'ok', 'msg' => 'Ministro eliminado correctamente.'];
+        }
+        return ['status' => 'error', 'msg' => 'Error interno al intentar eliminar el registro.'];
+    }
+
+    // 📋 Obtener listado de celebraciones por ministro
+    public function obtener_celebraciones_por_ministro($idMin) {
+        $sql = "SELECT c.IdCel, c.FechCel, c.NumLib, c.NumFol, c.Lugar, i.NomInd, i.ApeInd, tc.DesTip
+                FROM celebracion c
+                JOIN individuo_celebracion ic ON c.Id = ic.IdCel
+                JOIN individuos i ON ic.IdInd = i.idInd
+                JOIN tipo_celebracion tc ON c.TipCel = tc.IdTip
+                WHERE c.IdMin = ?
+                ORDER BY c.FechCel DESC";
+        $stmt = $this->conexion->prepare($sql);
+        $stmt->bind_param("i", $idMin);
+        $stmt->execute();
+        return $stmt->get_result();
+    }
 
     // ✅ Registrar nueva jerarquía
     public function registrar_jerarquia($NomJer, $DesJer)

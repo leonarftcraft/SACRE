@@ -975,6 +975,13 @@
                 return;
             }
 
+            // 🛡️ Verificación local antes de enviar
+            let existeLocal = ministrosData.some(m => m.nombre.toLowerCase().trim() === (nom + ' ' + ape).toLowerCase().trim());
+            if (existeLocal) {
+                Swal.fire('Atención', 'Este ministro ya se encuentra registrado.', 'warning');
+                return;
+            }
+
             $.post('?controller=sacrej&action=agregar_ministro', { Nom: nom, Ape: ape, CodJer: jer }, function(res) {
                 if (res.status === 'ok') {
                     const nuevoNombre = nom + ' ' + ape;

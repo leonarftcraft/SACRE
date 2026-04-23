@@ -16,6 +16,8 @@
           <th>Nombre</th>
           <th>Apellido</th>
           <th>Jerarquía</th>
+          <th>Celebraciones</th>
+          <th>Acciones</th>
         </tr>
       </thead>
       <tbody id="tbodyMinistros">
@@ -32,6 +34,16 @@
           <td><?= htmlspecialchars($fila['Nom']) ?></td>
           <td><?= htmlspecialchars($fila['Ape']) ?></td>
           <td><?= htmlspecialchars($fila['NomJer'] ?? '—') ?></td>
+          <td class="text-center">
+            <button class="btn btn-sm btn-link fw-bold text-decoration-none" onclick="verCelebraciones(<?= $fila['IdMinCel'] ?>, '<?= htmlspecialchars($fila['Nom'].' '.$fila['Ape']) ?>')">
+              <?= $fila['TotalCelebraciones'] ?>
+            </button>
+          </td>
+          <td class="text-center">
+            <button class="btn btn-sm btn-outline-danger" onclick="eliminarMinistro(<?= $fila['IdMinCel'] ?>)" <?= $fila['TotalCelebraciones'] > 0 ? 'disabled title="No se puede eliminar con celebraciones"' : '' ?>>
+              🗑️
+            </button>
+          </td>
         </tr>
         <?php
             endwhile;
@@ -97,6 +109,34 @@
   </div>
 </div>
 
+<!-- 🟦 Modal Listado Celebraciones -->
+<div class="modal fade" id="modalListadoCelebraciones" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title">Celebraciones de: <span id="nombreMinListado"></span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="table-responsive">
+          <table class="table table-sm table-striped table-hover" id="tablaCelebracionesMinistro">
+            <thead>
+              <tr class="table-light">
+                <th>N° Acta</th>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Bautizado</th>
+                <th>Lugar</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (function() {
 
@@ -154,6 +194,20 @@
         return;
       }
 
+      // 🛡️ Verificación local antes de enviar
+      let existeLocal = false;
+      $("#tbodyMinistros tr").each(function() {
+        const colNom = $(this).find("td:eq(1)").text().trim().toLowerCase();
+        const colApe = $(this).find("td:eq(2)").text().trim().toLowerCase();
+        if (colNom === nom.toLowerCase() && colApe === ape.toLowerCase()) {
+          existeLocal = true; return false;
+        }
+      });
+      if (existeLocal) {
+        notify("warning", "Duplicado", "Ya existe un ministro con ese nombre y apellido registrado.");
+        return;
+      }
+
       $.ajax({
         url: endpoint,
         type: "POST",
@@ -175,10 +229,16 @@
             const nombreJer = $("#CodJer option:selected").text();
             $("#tbodyMinistros").append(`
               <tr>
-                <td class="text-center">—</td>
+                <td class="text-center">${res.id}</td>
                 <td>${nom}</td>
                 <td>${ape}</td>
                 <td>${nombreJer}</td>
+                <td class="text-center">
+                  <button class="btn btn-sm btn-link fw-bold text-decoration-none" onclick="verCelebraciones(${res.id}, '${nom} ${ape}')">0</button>
+                </td>
+                <td class="text-center">
+                  <button class="btn btn-sm btn-outline-danger" onclick="eliminarMinistro(${res.id})">🗑️</button>
+                </td>
               </tr>
             `);
             $("#formMinistro")[0].reset();
@@ -195,6 +255,76 @@
       });
     });
   });
+
+  // 📋 Ver celebraciones
+  window.verCelebraciones = function(id, nombre) {
+    $('#nombreMinListado').text(nombre);
+    const tbody = $('#tablaCelebracionesMinistro tbody');
+    tbody.html('<tr><td colspan="5" class="text-center">Cargando...</td></tr>');
+    
+    const modal = new bootstrap.Modal(document.getElementById('modalListadoCelebraciones'));
+    modal.show();
+
+    $.getJSON('?controller=sacrej&action=api_celebraciones_ministro', { id: id }, function(data) {
+      let html = '';
+      if (data && data.length > 0) {
+        data.forEach(c => {
+          const fecha = c.FechCel ? c.FechCel.split('-').reverse().join('/') : '—';
+          html += `
+            <tr>
+              <td class="fw-bold">${c.IdCel}</td>
+              <td>${fecha}</td>
+              <td><span class="badge bg-light text-dark border">${c.DesTip}</span></td>
+              <td>${c.NomInd} ${c.ApeInd}</td>
+              <td class="small text-muted">${c.Lugar}</td>
+            </tr>`;
+        });
+      } else {
+        html = '<tr><td colspan="5" class="text-center text-muted">No se encontraron registros.</td></tr>';
+      }
+      tbody.html(html);
+    }).fail(function() {
+      tbody.html('<tr><td colspan="5" class="text-center text-danger">Error al cargar datos.</td></tr>');
+    });
+  };
+
+  // 🗑️ Eliminar ministro
+  window.eliminarMinistro = function(id) {
+    Swal.fire({
+      title: '¿Eliminar ministro?',
+      text: "Esta acción no se puede deshacer.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        $.ajax({
+          url: '?controller=sacrej&action=api_eliminar_ministro',
+          type: 'POST',
+          data: { id: id },
+          dataType: 'json',
+          beforeSend: function() {
+            Swal.fire({ title: 'Eliminando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+          },
+          success: function(res) {
+            if (res.status === 'ok') {
+              Swal.fire('Eliminado', res.msg, 'success').then(() => {
+                location.reload();
+              });
+            } else {
+              Swal.fire('Atención', res.msg, 'warning');
+            }
+          },
+          error: function() {
+            Swal.fire('Error', 'No se pudo procesar la solicitud.', 'error');
+          }
+        });
+      }
+    });
+  };
 
 })();
 </script>

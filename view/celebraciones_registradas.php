@@ -687,6 +687,20 @@ $(document).ready(function() {
           return;
       }
 
+      // 🛡️ Verificación local antes de enviar
+      let existeLocal = false;
+      $("#editIdMin option").each(function() {
+          const texto = $(this).text().toLowerCase().trim();
+          if (texto === (nom + " " + ape).toLowerCase().trim()) {
+              existeLocal = true;
+              return false;
+          }
+      });
+      if (existeLocal) {
+          Swal.fire("Atención", "Ese ministro ya se encuentra registrado.", "warning");
+          return;
+      }
+
       $.post("?controller=sacrej&action=agregar_ministro", { Nom: nom, Ape: ape, CodJer: jer }, function(res) {
           if(res.status === 'ok') {
               // Agregar al select y seleccionarlo

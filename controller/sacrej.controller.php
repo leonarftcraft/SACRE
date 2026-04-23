@@ -1770,6 +1770,27 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         exit;
     }
 
+    public function api_eliminar_ministro() {
+        header('Content-Type: application/json');
+        if (!isset($_POST['id'])) exit;
+        $id = (int)$_POST['id'];
+        echo json_encode($this->model->eliminar_ministro($id));
+        exit;
+    }
+
+    public function api_celebraciones_ministro() {
+        header('Content-Type: application/json');
+        if (!isset($_GET['id'])) exit;
+        $id = (int)$_GET['id'];
+        $res = $this->model->obtener_celebraciones_por_ministro($id);
+        $data = [];
+        while($row = $res->fetch_assoc()) {
+            $data[] = $row;
+        }
+        echo json_encode($data);
+        exit;
+    }
+
     public function api_obtener_ministros() 
     {
         header('Content-Type: application/json');
