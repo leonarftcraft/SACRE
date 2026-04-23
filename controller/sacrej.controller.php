@@ -506,6 +506,9 @@ class SacrejController
             if (isset($clientes[$nombre])) {
                 $clientes[$nombre]['last_seen'] = time();
                 $clientes[$nombre]['last_activity'] = time();
+                // 🛡️ Resetear estados operativos al reconectar para evitar estados heredados
+                $clientes[$nombre]['is_processing'] = false;
+                $clientes[$nombre]['is_verifying'] = false;
                 // Mantenemos el status y api_email previos
                 
                 ftruncate($fp, 0);
@@ -533,6 +536,7 @@ class SacrejController
                 'last_activity' => time(), 
                 'status'        => 'pending',
                 'is_processing' => false,
+                'is_verifying'  => false, // 🔍 Inicializar nuevo estado
                 'api_email'     => $emailAsignado // 📌 Guardar llave asignada
             ];
             
@@ -703,7 +707,7 @@ class SacrejController
                     $ia_info = $this->_gestionar_uso_api($apiEmail, $modeloIA);
 
                     // 🚀 Reiniciar el timer si está cargando IA, está en espera, o si el usuario interactuó
-                    if ($is_processing || $is_verifying || $status === 'pending' || $user_active) {
+                    if ($is_processing || $status === 'pending' || $user_active) { // 🔍 'is_verifying' ya no reinicia el timer de inactividad por sí solo
                         $clientes[$nombre]['last_activity'] = time();
                     }
                     
@@ -1576,6 +1580,9 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
             $resultado = $this->model->verificar_usuario($usuario, $contrasena);
 
             if ($resultado) {
+                // 🧹 Limpiar carpeta temporal de imágenes al iniciar sesión
+                $this->_limpiar_carpeta_temporal();
+
                 // 🔒 Resetear servidor por seguridad al loguearse
                 @file_put_contents('server_status.txt', '0');
 
@@ -1589,6 +1596,20 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
                 echo 0;
             }
             exit;
+        }
+    }
+
+    /* 🧹 Función privada para limpiar archivos huérfanos en la carpeta temporal */
+    private function _limpiar_carpeta_temporal()
+    {
+        $tempDir = 'view/images/actas/temp/';
+        if (is_dir($tempDir)) {
+            $files = glob($tempDir . '*');
+            foreach ($files as $file) {
+                if (is_file($file)) {
+                    @unlink($file);
+                }
+            }
         }
     }
 
