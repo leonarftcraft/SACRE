@@ -10,6 +10,3 @@ debug_*.txt
 
 # Herramientas de un solo uso (seguridad)
 tools/generar_hash.php
-
-# Archivos de configuración y claves (NO SUBIR)
-api_keys.enc

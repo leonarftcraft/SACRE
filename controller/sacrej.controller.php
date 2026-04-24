@@ -144,6 +144,24 @@ class SacrejController
         return 'CLAVE_SECRETA_SACREJ_2025_SEGURA'; 
     }
 
+    // 🔒 Encripta el contenido de un archivo JSON
+    private function _encrypt_content($content) {
+        $key = $this->_get_enc_key();
+        $iv = openssl_random_pseudo_bytes(openssl_cipher_iv_length('AES-256-CBC'));
+        $encrypted = openssl_encrypt($content, 'AES-256-CBC', $key, 0, $iv);
+        return base64_encode($iv) . '::' . base64_encode($encrypted);
+    }
+
+    // 🔓 Desencripta el contenido de un archivo JSON
+    private function _decrypt_content($encryptedContent) {
+        $key = $this->_get_enc_key();
+        $parts = explode('::', $encryptedContent);
+        if (count($parts) !== 2) return false; // Formato inválido
+        $iv = base64_decode($parts[0]);
+        $encrypted = base64_decode($parts[1]);
+        return openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
+    }
+
     private function _leer_api_keys() {
         $file = $this->_get_api_file_path();
         if (!file_exists($file)) return [];
@@ -199,9 +217,27 @@ class SacrejController
             // Sanitizar el correo para usarlo como nombre de archivo
             $safeEmail = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $email);
             $newPath = $uploadDir . 'key_' . $safeEmail . '.json';
+
+            // Leer el contenido original del archivo subido
+            $originalContent = file_get_contents($_FILES['json_file']['tmp_name']);
+            if ($originalContent === false) {
+                echo json_encode(['status' => 'error', 'msg' => 'Error al leer el archivo JSON subido.']);
+                exit;
+            }
+
+            // Encriptar el contenido
+            $encryptedContent = $this->_encrypt_content($originalContent);
+            if ($encryptedContent === false) {
+                echo json_encode(['status' => 'error', 'msg' => 'Error al encriptar el contenido del archivo JSON.']);
+                exit;
+            }
             
-            if (move_uploaded_file($_FILES['json_file']['tmp_name'], $newPath)) {
+            // Guardar el contenido encriptado en el nuevo archivo
+            if (file_put_contents($newPath, $encryptedContent)) {
                 $jsonFilePath = $newPath;
+            } else {
+                echo json_encode(['status' => 'error', 'msg' => 'Error al guardar el archivo JSON encriptado.']);
+                exit;
             }
         }
 
