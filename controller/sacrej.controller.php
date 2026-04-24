@@ -156,7 +156,10 @@ class SacrejController
     private function _decrypt_content($encryptedContent) {
         $key = $this->_get_enc_key();
         $parts = explode('::', $encryptedContent);
-        if (count($parts) !== 2) return false; // Formato inválido
+        
+        // 🔄 Si no tiene el separador '::', asumimos que es texto plano (compatibilidad)
+        if (count($parts) !== 2) return false; 
+
         $iv = base64_decode($parts[0]);
         $encrypted = base64_decode($parts[1]);
         return openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
@@ -169,25 +172,14 @@ class SacrejController
         $content = file_get_contents($file);
         if (empty($content)) return [];
 
-        // Formato esperado: IV::DatosEncriptados
-        $parts = explode('::', $content);
-        if (count($parts) !== 2) return [];
-        
-        $iv = base64_decode($parts[0]);
-        $encrypted = base64_decode($parts[1]);
-        $key = $this->_get_enc_key();
-        
-        $json = openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
-        return json_decode($json, true) ?? [];
+        // Intentar desencriptar. Si falla, es porque el archivo es texto plano antiguo.
+        $decrypted = $this->_decrypt_content($content);
+        return json_decode($decrypted !== false ? $decrypted : $content, true) ?? [];
     }
 
     private function _guardar_api_keys_file($data) {
-        $key = $this->_get_enc_key();
         $json = json_encode($data);
-        $iv = openssl_random_pseudo_bytes(openssl_cipher_iv_length('AES-256-CBC'));
-        $encrypted = openssl_encrypt($json, 'AES-256-CBC', $key, 0, $iv);
-        
-        $content = base64_encode($iv) . '::' . base64_encode($encrypted);
+        $content = $this->_encrypt_content($json);
         file_put_contents($this->_get_api_file_path(), $content);
     }
 
@@ -652,12 +644,20 @@ class SacrejController
         $limite = 18;
         $uso = 0;
 
-        if (!file_exists($archivo)) file_put_contents($archivo, json_encode([]));
+        // Si el archivo no existe, crearlo vacío y encriptado
+        if (!file_exists($archivo)) {
+            file_put_contents($archivo, $this->_encrypt_content(json_encode([])));
+        }
 
         $fp = fopen($archivo, 'c+');
         if (flock($fp, LOCK_EX)) {
             $content = stream_get_contents($fp);
-            $data = json_decode($content, true) ?: [];
+            
+            // Intentar desencriptar. Si falla, procesar como texto plano (migración)
+            $decrypted_content = $this->_decrypt_content($content);
+            $data = ($decrypted_content !== false) 
+                    ? (json_decode($decrypted_content, true) ?: []) 
+                    : (json_decode($content, true) ?: []);
 
             if (!isset($data[$email])) {
                 $data[$email] = ['count' => 0, 'last_reset' => 0];
@@ -680,9 +680,10 @@ class SacrejController
             }
             $uso = $data[$email]['count'];
 
+            $encrypted_data_to_write = $this->_encrypt_content(json_encode($data));
             ftruncate($fp, 0);
             rewind($fp);
-            fwrite($fp, json_encode($data));
+            fwrite($fp, $encrypted_data_to_write);
             fflush($fp);
             flock($fp, LOCK_UN);
         }
