@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "daring-thought-468418-i1",
+  "private_key_id": "e2427240f684267211fedb54eba002a6388e1fbd",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDD4wqmEDg01XxH\nqRMd5aHFs0bfXR1oiA17EjFR3BB7jaXbvpU796mbYw9gj+72v/m/CysMcqDktZd6\nTQVmJXVLfOwak6tGqUNj8/TsvlDwsIyV05X+1S5dwVkuywldtKy0xZHoBx4SwKB7\n5bNV/9WbW/iMxpqojuqpGf2JAZX3N1TI0Zten/9rIUuBYN9KuTmNRX/LQZ9HA0y4\nKdQ1T/8TUUvi5MLfGJ2FH0W1ZmeL37ZTKZn6PYnaK7r00vR5W9ajzadq2Ol8WAjw\nj7i8zrjHrJXMwp6iWgOmk0gOcsz/w39A1C86CP34c82TQCKJAfMJUx5FFHKN6XGp\nmERPFlsvAgMBAAECggEAXNRP/BGMqVEQY99WfWEQsGF8sSZt5Ncw2EVvVPU+ZGbk\nlkXzb+c2m7ouk9qx6oJgpu3yeSQrZic+QUmVyOnwc5UgSJn5XXOiSZBXXgf00JNC\nFFCgcRLytaCGlHvIlP0lqUdFlVkmIcniY8Sfn54tSsIjgAcwTLfpsbhs44v6Vxwv\nXZSw7g38H/MxQ8DqStCPdOaB2a93GL92ps8IeSMoPunB4lCUkZZpKwJuRTRENr1J\nsAhT/JKWM4Bpc4cMe4eRgS0cHvYj3iynSYcsvY1Jd4NPjC6078yqKmH2OxJCZBO1\nBmtjV5WrNOOpZu7yM8ZhDTJ2S56strAM9C8hZtBYRQKBgQDvTTJwQmDMUmyhw8UF\nFzXmJmyhZdFmlifmYU4/5c9/VnS4U25De7AHjY5yR0RUCvoIy4LQuWH6Az0+CmYa\n6Tr1Qb543px9NVa37lXuHj83YvRhZ5UQdP0Stu7UW/WIR6pQvirp1fvp2p/Lvq4G\nRv63oufTXXhnD+Q2BrEFcOuGXQKBgQDRjkymXutU/cg980jF5bolcLsD9Pzh0HnP\nbJeoE0iE5areucX5tKINZbRy6Qpz/DJcagoJiRN9sDGYzj9M2ZVhH5naCcRo2ITQ\nUiw4vr+V3KVBCA2X0Su/oa1TCPKoge0QxPiPbokqw1gbivwP2LbxRJ6XcT1Km7vE\nnv/pT/o2+wKBgGYl1rzyqK0vFe3rSkOFB93pUv+GHd+jgv6lVKiT6YHantI70tp9\nhsOCmmaPo0wYr2hnrrx4FamKDm9YMwOTwTYFzU98/uG3jf/PfeC6CpQS6mxVsdyn\ng4ukiMgfROzaYoo60sikLfdB+moXR+OoFHzAziJ8SLP9pZWmP5QqAm+FAoGAdHXG\n93ctBlD8JiG8we7IIuKhrLNMjxrTd4l8RzZgSStyaNGJyxquLQ/m1y3YV1lDi8SK\ny33YzTNMfQWyfD04HX/4ewqOk04xkaz5Upf/1YOIe7nEBCmFTLzHnKwOX8PFQlqV\nYPEnXhKuNrBpIU1pbnCaSsPuMjaWhdFvm/SMtF0CgYEAjaDIu+DLxFyoj36CzeuC\nmuEA82rQEdijC17RT8a/llX6opFM33y/UzgKLYYeF/36WIr3URiaOGQklQI1YmuD\n/ubhHEpOD7BmL5rRsdqOwaxGzugfgmq9NEK6O8HVKItKhLS7R+81UJvLQiayjq6S\neih1ohKa55Cd4rb5aLV8Dlw=\n-----END PRIVATE KEY-----\n",
+  "client_email": "sacra430@daring-thought-468418-i1.iam.gserviceaccount.com",
+  "client_id": "108581152328069584734",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/sacra430%40daring-thought-468418-i1.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

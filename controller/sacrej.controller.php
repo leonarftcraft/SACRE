@@ -179,17 +179,36 @@ class SacrejController
 
         $email = trim($_POST['email'] ?? '');
         $apiKey = trim($_POST['apiKey'] ?? '');
+        $emailPass = trim($_POST['emailPass'] ?? '');
 
-        if (!$email || !$apiKey) {
-            echo json_encode(['status' => 'error', 'msg' => 'Correo y Llave son obligatorios.']);
+        if (!$email || !$apiKey || !$emailPass) {
+            echo json_encode(['status' => 'error', 'msg' => 'Todos los campos (Correo, Llave y Clave de correo) son obligatorios.']);
             exit;
         }
 
-        // 🔹 Verificar si la API Key ya existe (evitar duplicados)
         $keys = $this->_leer_api_keys();
-        foreach ($keys as $storedData) {
-            if ($storedData['key'] === $apiKey) {
-                echo json_encode(['status' => 'error', 'msg' => 'Esta API Key ya se encuentra registrada en el sistema.']);
+        $jsonFilePath = $keys[$email]['file_path'] ?? '';
+
+        // 📂 Lógica para guardar el archivo físico vinculado al correo
+        if (isset($_FILES['json_file']) && $_FILES['json_file']['error'] === UPLOAD_ERR_OK) {
+            $uploadDir = 'api_data/json_keys/';
+            if (!file_exists($uploadDir)) {
+                mkdir($uploadDir, 0777, true);
+            }
+            
+            // Sanitizar el correo para usarlo como nombre de archivo
+            $safeEmail = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $email);
+            $newPath = $uploadDir . 'key_' . $safeEmail . '.json';
+            
+            if (move_uploaded_file($_FILES['json_file']['tmp_name'], $newPath)) {
+                $jsonFilePath = $newPath;
+            }
+        }
+
+        // 🔹 Verificar si la API Key ya existe (evitar duplicados)
+        foreach ($keys as $storedEmail => $storedData) {
+            if ($storedData['key'] === $apiKey && $storedEmail !== $email) {
+                echo json_encode(['status' => 'error', 'msg' => 'Esta API Key ya se encuentra registrada bajo otro correo electrónico.']);
                 exit;
             }
         }
@@ -224,11 +243,13 @@ class SacrejController
         $keys[$email] = [
             'email' => $email,
             'key' => $apiKey,
-            'fecha' => date('Y-m-d H:i:s')
+            'emailPass' => $emailPass,
+            'fecha' => date('Y-m-d H:i:s'),
+            'file_path' => $jsonFilePath
         ];
 
         $this->_guardar_api_keys_file($keys);
-        echo json_encode(['status' => 'ok', 'msg' => 'API Key guardada correctamente.']);
+        echo json_encode(['status' => 'ok', 'msg' => 'API Key y archivo guardados correctamente.']);
         exit;
     }
 
@@ -240,6 +261,10 @@ class SacrejController
         $keys = $this->_leer_api_keys();
 
         if (isset($keys[$email])) {
+            // 🗑️ Eliminar el archivo físico si existe antes de borrar el registro
+            if (!empty($keys[$email]['file_path']) && file_exists($keys[$email]['file_path'])) {
+                @unlink($keys[$email]['file_path']);
+            }
             unset($keys[$email]);
             $this->_guardar_api_keys_file($keys);
         }

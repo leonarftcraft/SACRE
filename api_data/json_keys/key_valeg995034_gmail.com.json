@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "eloquent-clover-494313-h4",
+  "private_key_id": "2f4a7d8b2786cde8eafd285a3b0236d596e136f9",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDOhqjPUHI4sOR1\nu1g3q8mnAvKVmokLpnzKpknGuHvu69nSQZBClT44QzsXSLlDmgY9OwosktRA+x8V\nklR6crl//oZoH9oECdXKop9s8NmFHVDigbRFhR7pTqVad0TwGUq99Qiz7nb8f1C0\n0Vg/aV8vIZoJyF1OWiRsxKv/59dejUK3Vzy9pbxZAbAoWNlO/I5J54Ug7SzQW768\n4G3196MqWLhy7w+S+Nl0kPo3t5CSSf4dQ6OJ2zbp78EKWw8mN2S3hqotjztst8DX\n+qQFRKMpd7Pa8M8RvIPtvCpkWHBKGvrlpxEh7i8pwrlwCb2KQgzEo9xiG+0lh8oN\nqTs5LmANAgMBAAECggEAGzKvMQwsWqxrDdkkA0Lfndu8xDhzg2IDzbFMBnxdr+eG\nClNBkw8yADlUYxrb8Rvr5ezsSFX2127q102ry+tnZASKQVSugrkj21mCytdGIipr\n8ER6D+y51ypZCtqprL/78JvAL2gAafy/TWzDZSh0lVGkxlSJeyvSX7Of3iXzXjtZ\n/6lYU3QI+doaOa6SQI/UvMj2Ywoc9ONot2DKQhIZZE5Fo+dzAo/QNwioXnyS4tk2\nz/ccXC6L5Oh4FdGXBZx4kPVImGoB/JzUP87Dh4IHsDaVT7G9M7kfT0uhlNG9Glax\npP6YXQbfLYhMASuveYXtsJEEZnOTFRuUTTXMLh/34QKBgQD2lxE41zc9+yYPWFRF\nSpjG55NwZFbHlLIM5FP+L1t6EtNETHzvhgn9k9BO8xKdxM71AXDqC9y5ayXOHCUx\nHtmPG7xOo5+3L1tqL+69fZgLbSLrzYP+hzEJCYJCGntDs9lGc9foltyAsgQqAk5W\ne040WgICN42ebYPxWdVgMKHI4QKBgQDWaDT9brjuU66Gl0RQpvYauqlaNgOG9yYo\nf2xgRF0Z/VkB+nDDaQeLNf7seXNhcSJjRD0zBWD8au1dZiBO5jKqFwm4WdB6lriY\nz+VrcSbq+R8dqWuSaLxvaFb6rDJg+VyDB9CG6ivb6W4HTHYOrvxpRJ9YyMFxVe1s\n2FZ5Bu2grQKBgQCA4HtzxadtkXFW28dPX6lxa163gvmH3cMg0cTEOGQK7QPV0lQJ\nq3hVO4fHe2rjYhT4IASvjfuSPNnJWxRlE8aI8On9/65dwzZ3zQ1to9JvRl7V9tdh\nk66hFoMpoUWDIOAR3kGdohskd+WNPx9KO6+n1NLv7bDqeDpZTaYjW8dygQKBgQCj\nsePjKknfC9zPvWXW/eIf/iuWSG7g+IkVmlOwHAHI+fie3gqB5wpvasY63W8OEkZi\n65KeBZlKnoijKnm4Q2CjI/uz2D6nmbNOWEucgENqWtE64ELVAUn89PiTYi0EhN3w\n3GKE3vylZc8vm1z3UPo9lLrkGkI2uZgP5gv/Ux7R8QKBgDu2bffCsTkqQQSkSX7l\nqZnF+JV87wqfI1o1MOvWgmj/00O7fZO8zgr+C7UxePMbgtOrfgWTBAuLVt6UGd95\nSPjsGn3wq/PzMe2PBf9gC623DH3UATh2W+zja6VXl6Q5SuuaqxIBA2G7f2uPGSBN\n/3r2jJaVnU89vNb4XqdWkACU\n-----END PRIVATE KEY-----\n",
+  "client_email": "valeg995034@eloquent-clover-494313-h4.iam.gserviceaccount.com",
+  "client_id": "106605461037463365931",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/valeg995034%40eloquent-clover-494313-h4.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

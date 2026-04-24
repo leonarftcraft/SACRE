@@ -12,14 +12,27 @@
                 <div class="card-body">
                     <form id="formApiKey" onsubmit="return false;">
                         <div class="mb-3">
+                            <label class="form-label small fw-bold text-primary">Archivo JSON (Llave de Servicio)</label>
+                            <input type="file" id="inputJsonFile" class="form-control form-control-sm" accept=".json">
+                            <div class="form-text" style="font-size: 0.7rem;">Este archivo se almacenará en el sistema vinculado al correo ingresado.</div>
+                        </div>
+                        <hr>
+                        <div class="mb-3">
                             <label class="form-label small">Correo Electrónico</label>
                             <input type="email" id="apiEmail" class="form-control" required placeholder="ejemplo@correo.com">
                         </div>
                         <div class="mb-3">
-                            <label class="form-label small">API Key (Llave)</label>
+                            <label class="form-label small">API Key (Llave de Texto)</label>
                             <input type="text" id="apiKeyVal" class="form-control" required placeholder="Pegar llave aquí...">
                         </div>
-                        <button type="button" id="btnGuardarApi" class="btn btn-success w-100">Guardar</button>
+                        <div class="mb-3">
+                            <label class="form-label small">Clave de Correo</label>
+                            <input type="password" id="emailPassVal" class="form-control" required placeholder="Clave de aplicación o contraseña...">
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button type="button" id="btnGuardarApi" class="btn btn-success">Guardar</button>
+                            <button type="button" id="btnLimpiarForm" class="btn btn-outline-secondary btn-sm" style="display:none;">Cancelar Edición / Limpiar</button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -38,6 +51,8 @@
                                 <tr>
                                     <th>Correo</th>
                                     <th>Llave (Oculta)</th>
+                                    <th>Clave Correo</th>
+                                    <th class="text-center">Archivo</th>
                                     <th>Fecha Registro</th>
                                     <th class="text-center">Acción</th>
                                 </tr>
@@ -53,8 +68,27 @@
                                                     <button class="btn btn-outline-secondary btn-ver-key" type="button">👁️</button>
                                                 </div>
                                             </td>
+                                            <td>
+                                                <div class="input-group input-group-sm" style="max-width: 200px;">
+                                                    <input type="password" class="form-control" value="<?= htmlspecialchars($k['emailPass'] ?? '') ?>" readonly>
+                                                    <button class="btn btn-outline-secondary btn-ver-key" type="button">👁️</button>
+                                                </div>
+                                            </td>
+                                            <td class="text-center">
+                                                <?php if (!empty($k['file_path']) && file_exists($k['file_path'])): ?>
+                                                    <span class="badge bg-success" title="<?= htmlspecialchars($k['file_path']) ?>">📁 Guardado</span>
+                                                <?php else: ?>
+                                                    <span class="badge bg-secondary">Sin archivo</span>
+                                                <?php endif; ?>
+                                            </td>
                                             <td class="small"><?= htmlspecialchars($k['fecha']) ?></td>
                                             <td class="text-center">
+                                                <button class="btn btn-sm btn-info btn-editar-api" 
+                                                        data-email="<?= htmlspecialchars($k['email']) ?>"
+                                                        data-key="<?= htmlspecialchars($k['key']) ?>"
+                                                        data-emailpass="<?= htmlspecialchars($k['emailPass'] ?? '') ?>">
+                                                    Editar
+                                                </button>
                                                 <button class="btn btn-sm btn-danger btn-eliminar-api" data-email="<?= htmlspecialchars($k['email']) ?>">
                                                     Eliminar
                                                 </button>
@@ -63,7 +97,7 @@
                                     <?php endforeach; ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="4" class="text-center text-muted">No hay llaves registradas.</td>
+                                        <td colspan="5" class="text-center text-muted">No hay llaves registradas.</td>
                                     </tr>
                                 <?php endif; ?>
                             </tbody>
@@ -90,23 +124,69 @@ $(document).ready(function() {
         }
     });
 
+    // ✏️ Cargar datos en el formulario para editar
+    $(document).on('click', '.btn-editar-api', function() {
+        const email = $(this).data('email');
+        const key = $(this).data('key');
+        const pass = $(this).data('emailpass');
+
+        // Bloquear el correo para que no se pueda modificar la relación
+        $('#apiEmail').val(email).prop('readonly', true);
+        $('#apiKeyVal').val(key);
+        $('#emailPassVal').val(pass);
+
+        $('#btnGuardarApi').text('Actualizar').removeClass('btn-success').addClass('btn-primary');
+        $('#btnLimpiarForm').show();
+        
+        $('html, body').animate({ scrollTop: 0 }, 'slow');
+    });
+
+    // 🧹 Limpiar formulario / Cancelar edición
+    $('#btnLimpiarForm').click(function() {
+        $('#formApiKey')[0].reset();
+        $('#apiEmail').prop('readonly', false);
+        $('#btnGuardarApi').text('Guardar').removeClass('btn-primary').addClass('btn-success');
+        $(this).hide();
+    });
+
     // 💾 Guardar API Key
     $('#btnGuardarApi').click(function() {
         let email = $('#apiEmail').val().trim();
         let key = $('#apiKeyVal').val().trim();
+        let emailPass = $('#emailPassVal').val().trim();
+        let jsonFile = $('#inputJsonFile')[0].files[0];
 
-        if (!email || !key) {
-            Swal.fire('Atención', 'Complete ambos campos', 'warning');
+        if (!email || !key || !emailPass) {
+            Swal.fire('Atención', 'Por favor, complete todos los campos.', 'warning');
             return;
         }
 
-        $.post('?controller=sacrej&action=guardar_api_key', { email: email, apiKey: key }, function(res) {
-            if (res.status === 'ok') {
-                Swal.fire('Guardado', res.msg, 'success').then(() => location.reload());
-            } else {
-                Swal.fire('Error', res.msg, 'error');
+        let formData = new FormData();
+        formData.append('email', email);
+        formData.append('apiKey', key);
+        formData.append('emailPass', emailPass);
+        if (jsonFile) {
+            formData.append('json_file', jsonFile);
+        }
+
+        $.ajax({
+            url: '?controller=sacrej&action=guardar_api_key',
+            type: 'POST',
+            data: formData,
+            contentType: false,
+            processData: false,
+            dataType: 'json',
+            success: function(res) {
+                if (res.status === 'ok') {
+                    Swal.fire('Guardado', res.msg, 'success').then(() => location.reload());
+                } else {
+                    Swal.fire('Error', res.msg, 'error');
+                }
+            },
+            error: function() {
+                Swal.fire('Error', 'No se pudo conectar con el servidor.', 'error');
             }
-        }, 'json');
+        });
     });
 
     // 🗑️ Eliminar API Key

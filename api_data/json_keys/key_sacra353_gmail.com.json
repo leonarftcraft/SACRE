@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "fedebau",
+  "private_key_id": "265c3b7f0922c0edb60daf7decd73a1854d3c7bd",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCnx0MpBj201PDf\ndlaVn5WHKxbh+LjkcJ89CIze6xAeWLQ4hb80hfdIECJO8YNAbmot1k2p0B2icjay\naw6oLCZOLy5pEThxAZsjpyeKi1tENPbXFPswE1re5nvyFDRpX3Og0mhWF6nBdXtd\njuhA9bUv8r5eiFJ5liytw62h6wwzajjS0LRTFKVZJIDYNF7Ify6aNiyPqsJhFS7c\nkBE+N0y2xZg6XBgnLOt3mQXuAZs6OOAwZKUflOZ7PQQR88pJWHt5DQ7tfwa1v2GU\nBAjUKLTM2CuaUZuAnzDNxVlFulq5pcLZKuRnDWxary/dNchSSlMDhJjknGzofS4V\nmu03kIRNAgMBAAECggEAGBnbZ6v+FrklDdCjwPQO6H8T1yuhsa0M7tlI1SfapaVT\n5C+wRwT8f+VTbFgspMeHqKR5fQyIiUKTYV9YGGfZK8+CwPSIkVEr/jvfhfsdRee+\n0qgwqhgJrG3a/awR2FYuF7rJ4p4dFE2CRm8GJXi2SZg66Pz3rgAY1HBAw7ruQn9C\n9gvC6z5LaQWPwRI/uINL+5M3WDywL2CuBS94o/F20xDm7+9sRWXiFdJ7HtehRteG\nPyiXLdZSIF24pKhdswx3zS7NzHX5Vtv2vdA9epQEShD+anBfTbhvWVrKKIuEcG+B\ndiuv5+JI76vKDG1VOWBS0UArImTU4ALCE4mPbqHJqQKBgQDP6rClfQ54qf77e0yX\n/0Oe8KYVpW0F98CkBEtQFhC5ZBmF/2S+N87y9SfC95WtzUL4enZJ1jMLn4ubgzAL\nVJYbNU9rZYlTMPMQAjIzker9NvdV1iPCio0Vg/HSt3Zrl3p8Eb6FHZnHOE9tgN7T\nLOSjSzb1/zVJCKVLeh2br5NDaQKBgQDOlEGrUuNC94VhuR27k1RHkiT47ezFf7Tx\nlTtRCU+p0T+iCYUWmM0kad814zyu+KYQiSRi5xENbMjQfDESXZcAMfCxndezDCKl\nc7DFsGK+Ztxo7cvyXtFaD9qtTZ3QSNT533brw1oaL9zD89BO6SL6JsZETCGpdqFz\nGF5r5W5xRQKBgE4//JV72GtvR0isYeo+ptt1pHw3Ey4QzU6tUw7kDw1G8BgvQ2IX\nrOphe8Jz3cBYpSDRLh2h4Po55Jf1qqpI/mllCevYffNyU7gtq2kfPLpp6nJCspiv\n/mMfkm6En6vkibOSFgsRVePVfIcw3ivKFI6kax3wG8TN3S/n2KbUUG8pAoGAe38A\nHzbHLAKjV39+OePiz4Kb3cEG+i7VclMfiduCJ2gznWAJky+3+9vbF/EIFyYIyPvj\np8ixVhBBoPmNsIgIvJIebWCKUbygfb7C3/wJnAAMJiJ6+SMcDrZJqa8r+BeCUvr3\nsgwwMlWIqhB46KPRSDCj+LJ2sUN9UzwvPluDge0CgYA4kXTpoIHLcG9sUFS4rxug\nzWJodJLlT2sQ1XcMql+h584oCxQL9oZ2PATZYHWtbz95OXKvctDmujNm8u3LpY8H\n2dsMVPcAvnz6rRgAOAjHfSSMZlgmoFUqpwoxChC6YhHB9oV/fRCqSPJ7LKAQ8n9p\n0Wjzm3QLg3Hm9ePJP8hp6A==\n-----END PRIVATE KEY-----\n",
+  "client_email": "sacra353@fedebau.iam.gserviceaccount.com",
+  "client_id": "115760895023030507604",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/sacra353%40fedebau.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
