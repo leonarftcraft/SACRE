@@ -1,6 +1,9 @@
 # Archivos de proyecto de Visual Studio Code
 .vscode/
 
+# Configuración sensible (Llaves maestras)
+config.php
+
 # Archivos de configuración de Dansware
 /*.txt
 

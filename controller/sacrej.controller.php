@@ -1,5 +1,7 @@
 <?php
 require_once "model/sacrej.model.php";
+// Cargar configuración local si existe
+if (file_exists("config.php")) { require_once "config.php"; }
 
 class SacrejController
 {
@@ -140,8 +142,10 @@ class SacrejController
     }
     
     private function _get_enc_key() {
-        // En producción, esto debería estar en una variable de entorno
-        return 'CLAVE_SECRETA_SACREJ_2025_SEGURA'; 
+        // Usa la constante definida en config.php
+        return defined('SACRE_ENC_KEY') 
+            ? SACRE_ENC_KEY 
+            : 'CLAVE_POR_DEFECTO_REVISAR_CONFIG'; 
     }
 
     // 🔒 Encripta el contenido de un archivo JSON
