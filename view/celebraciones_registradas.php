@@ -123,7 +123,8 @@ $jerarquias = $this->model->obtener_todos("jerarquia_ministro");
 
               <!-- Botón Ver Imagen (si existe) -->
               <?php if (!empty($urlImagen)): ?>
-                  <a href="<?= htmlspecialchars($urlImagen); ?>" target="_blank" class="btn btn-sm btn-success" title="Ver Imagen del Acta">
+                  <?php $rutaVisor = (strpos($urlImagen, '.dat') !== false) ? 'controller/visor.php?img=' . urlencode($urlImagen) : $urlImagen; ?>
+                  <a href="<?= htmlspecialchars($rutaVisor); ?>" target="_blank" class="btn btn-sm btn-success" title="Ver Imagen del Acta">
                       📷
                   </a>
               <?php endif; ?>

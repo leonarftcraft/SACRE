@@ -83,7 +83,9 @@
                                     <td><?= htmlspecialchars($row['NumFol']) ?></td>
                                     <td class="text-nowrap">
                                         <?php if (!empty($row['UrlArchivo'])): ?>
-                                            <a href="<?= htmlspecialchars($row['UrlArchivo']) ?>" target="_blank" class="btn btn-sm btn-success ms-1" title="Ver Imagen">
+                                            <?php $rutaImg = htmlspecialchars($row['UrlArchivo']); ?>
+                                            <?php $rutaVisor = (strpos($rutaImg, '.dat') !== false) ? 'controller/visor.php?img=' . urlencode($rutaImg) : $rutaImg; ?>
+                                            <a href="<?= $rutaVisor ?>" target="_blank" class="btn btn-sm btn-success ms-1" title="Ver Imagen">
                                                 📷
                                             </a>
                                         <?php endif; ?>
@@ -434,7 +436,9 @@ function actualizarTablaCompleta() {
                     fecBaut = p[2] + '/' + p[1] + '/' + p[0];
                 }
                 
-                let btnImagen = row.UrlArchivo ? `<a href="${row.UrlArchivo}" target="_blank" class="btn btn-sm btn-success ms-1" title="Ver Imagen">📷</a>` : '';
+                // Convertir ruta .dat a visor si es necesario
+                let visorUrl = row.UrlArchivo ? (row.UrlArchivo.includes('.dat') ? 'controller/visor.php?img=' + encodeURIComponent(row.UrlArchivo) : row.UrlArchivo) : '';
+                let btnImagen = visorUrl ? `<a href="${visorUrl}" target="_blank" class="btn btn-sm btn-success ms-1" title="Ver Imagen">📷</a>` : '';
                 
                 html += `<tr><td>${displayCounter++}</td><td>${htmlspecialchars(row.NomInd)}</td><td>${htmlspecialchars(row.ApeInd)}</td><td>${fecNac}</td><td>${fecBaut}</td><td>${htmlspecialchars(row.NumLib)}</td><td>${htmlspecialchars(row.NumFol)}</td><td class="text-nowrap">${btnImagen}</td></tr>`;
             });
@@ -588,8 +592,10 @@ function actualizarPendientes() {
                     `;
 
                     if (idx === 0) {
+                        // Convertir ruta .dat a visor si es necesario
+                        let visorUrl = group.ruta.includes('.dat') ? 'controller/visor.php?img=' + encodeURIComponent(group.ruta) : group.ruta;
                         let btnImg = group.ruta.includes('view/images') 
-                            ? `<a href="${group.ruta}" target="_blank" class="btn btn-sm btn-outline-primary">📷</a>` 
+                            ? `<a href="${visorUrl}" target="_blank" class="btn btn-sm btn-outline-primary">📷</a>` 
                             : '<span class="text-muted small">Manual</span>';
 
                         html += `
@@ -766,12 +772,9 @@ function editarPendiente(index) {
         $('#editSexIndSelect').val(d.SexInd);
         $('#editRutaImagen').val(d.RutaImagen || '');
 
-        // Mostrar enlace a imagen si existe
-        if (d.RutaImagen) {
-            $('#linkImagenContainer').html(`<a href="${d.RutaImagen}" target="_blank" class="btn btn-sm btn-info text-white">👁️ Ver Imagen Original</a>`);
-        } else {
-            $('#linkImagenContainer').html('<span class="text-muted small">Sin imagen</span>');
-        }
+        // Convertir ruta .dat a visor si es necesario
+        let visorUrl = d.RutaImagen ? (d.RutaImagen.includes('.dat') ? 'controller/visor.php?img=' + encodeURIComponent(d.RutaImagen) : d.RutaImagen) : '';
+        $('#linkImagenContainer').html(visorUrl ? `<a href="${visorUrl}" target="_blank" class="btn btn-sm btn-info text-white">👁️ Ver Imagen Original</a>` : '<span class="text-muted small">Sin imagen</span>');
 
         new bootstrap.Modal(document.getElementById('modalEditarPendiente')).show();
     }, 'json').fail(function() {
@@ -890,7 +893,9 @@ $(document).on('click', '.btnDetalle', function() {
             // 📷 Mostrar imagen si existe
             $('#dDigitalizador').empty();
             if (d.imagen) {
-                $('#dImagenContainer').html(`<a href="${d.imagen}" target="_blank" class="btn btn-sm btn-success w-100">📷 Ver Imagen del Acta</a>`);
+                // Convertir ruta .dat a visor si es necesario
+                let visorUrl = d.imagen ? (d.imagen.includes('.dat') ? 'controller/visor.php?img=' + encodeURIComponent(d.imagen) : d.imagen) : '';
+                $('#dImagenContainer').html(visorUrl ? `<a href="${visorUrl}" target="_blank" class="btn btn-sm btn-success w-100">📷 Ver Imagen del Acta</a>` : '');
                 if (d.digitalizador) {
                     $('#dDigitalizador').text("Digitalizado por: " + d.digitalizador);
                 }

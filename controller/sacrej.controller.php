@@ -936,6 +936,12 @@ class SacrejController
             if ($realPath && strpos($realPath, $baseDir) === 0 && file_exists($realPath)) {
                 $rutaFinal = $rutaExistente;
                 $data = file_get_contents($rutaFinal);
+                // 🛡️ RECUPERACIÓN: Si el archivo viene de disco, está "disfrazado".
+                // Aplicamos XOR para que la IA reciba los bytes originales.
+                $xorKey = defined('SACRE_XOR_KEY') ? SACRE_XOR_KEY : 0x00;
+                for ($i = 0; $i < 10 && $i < strlen($data); $i++) {
+                    $data[$i] = chr(ord($data[$i]) ^ $xorKey);
+                }
             }
         }
 
@@ -956,12 +962,18 @@ class SacrejController
                 mkdir($bloqueDir, 0777, true);
             }
             
-            $extension = pathinfo($_FILES['imagen']['name'], PATHINFO_EXTENSION) ?: 'jpg';
-            $nombreArchivo = 'acta_' . time() . '_' . uniqid() . '.' . $extension;
+            $nombreArchivo = 'acta_' . time() . '_' . uniqid() . '.dat';
             $rutaFinal = $bloqueDir . $nombreArchivo;
             
-            // Guardamos la copia física
-            file_put_contents($rutaFinal, $data);
+            // 🛡️ DISFRAZ: Aplicamos XOR a los primeros 10 bytes antes de guardar en disco
+            $maskedData = $data;
+            $xorKey = defined('SACRE_XOR_KEY') ? SACRE_XOR_KEY : 0x00;
+            for ($i = 0; $i < 10 && $i < strlen($maskedData); $i++) {
+                $maskedData[$i] = chr(ord($maskedData[$i]) ^ $xorKey);
+            }
+            
+            // Guardamos la copia física "disfrazada"
+            file_put_contents($rutaFinal, $maskedData);
         }
 
         $base64 = base64_encode($data);
