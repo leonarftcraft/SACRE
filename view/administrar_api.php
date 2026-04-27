@@ -12,12 +12,6 @@
                 <div class="card-body">
                     <form id="formApiKey" onsubmit="return false;">
                         <div class="mb-3">
-                            <label class="form-label small fw-bold text-primary">Archivo JSON (Llave de Servicio)</label>
-                            <input type="file" id="inputJsonFile" class="form-control form-control-sm" accept=".json">
-                            <div class="form-text" style="font-size: 0.7rem;">Este archivo se almacenará en el sistema vinculado al correo ingresado.</div>
-                        </div>
-                        <hr>
-                        <div class="mb-3">
                             <label class="form-label small">Correo Electrónico</label>
                             <input type="email" id="apiEmail" class="form-control" required placeholder="ejemplo@correo.com">
                         </div>
@@ -52,7 +46,6 @@
                                     <th>Correo</th>
                                     <th>Llave (Oculta)</th>
                                     <th>Clave Correo</th>
-                                    <th class="text-center">Archivo</th>
                                     <th>Fecha Registro</th>
                                     <th class="text-center">Acción</th>
                                 </tr>
@@ -73,13 +66,6 @@
                                                     <input type="password" class="form-control" value="<?= htmlspecialchars($k['emailPass'] ?? '') ?>" readonly>
                                                     <button class="btn btn-outline-secondary btn-ver-key" type="button">👁️</button>
                                                 </div>
-                                            </td>
-                                            <td class="text-center">
-                                                <?php if (!empty($k['file_path']) && file_exists($k['file_path'])): ?>
-                                                    <span class="badge bg-success" title="<?= htmlspecialchars($k['file_path']) ?>">📁 Guardado</span>
-                                                <?php else: ?>
-                                                    <span class="badge bg-secondary">Sin archivo</span>
-                                                <?php endif; ?>
                                             </td>
                                             <td class="small"><?= htmlspecialchars($k['fecha']) ?></td>
                                             <td class="text-center">
@@ -154,7 +140,6 @@ $(document).ready(function() {
         let email = $('#apiEmail').val().trim();
         let key = $('#apiKeyVal').val().trim();
         let emailPass = $('#emailPassVal').val().trim();
-        let jsonFile = $('#inputJsonFile')[0].files[0];
 
         if (!email || !key || !emailPass) {
             Swal.fire('Atención', 'Por favor, complete todos los campos.', 'warning');
@@ -165,9 +150,6 @@ $(document).ready(function() {
         formData.append('email', email);
         formData.append('apiKey', key);
         formData.append('emailPass', emailPass);
-        if (jsonFile) {
-            formData.append('json_file', jsonFile);
-        }
 
         $.ajax({
             url: '?controller=sacrej&action=guardar_api_key',
