@@ -3,7 +3,8 @@
 
 # Archivos de configuración de Dansware
 /*.txt
-
+#archivo de seguridad
+config.php
 # Archivos de estado dinámico (no subir al repositorio)
 connected_clients.json
 pending_bautizos.json

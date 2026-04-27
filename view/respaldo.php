@@ -112,13 +112,65 @@ function solicitarRespaldo() {
                     <p class="card-text text-center mt-3">
                         Sincronización automática de los archivos y la base de datos con un servicio de almacenamiento en la nube seguro.
                     </p>
-                    <div class="alert alert-warning small mt-auto">
-                        <i class="bi bi-cone-striped"></i> Funcionalidad en desarrollo (En espera).
+                      <div class="alert alert-info small mt-auto">
+                        <i class="bi bi-shield-lock-fill"></i> El sistema comprimirá los datos, los fragmentará y distribuirá las partes entre las cuentas de Google Drive vinculadas para máxima seguridad.
                     </div>
-                    <button class="btn btn-secondary w-100 py-2 fw-bold" disabled>
-                        ☁️ Sincronizar (Próximamente)
+                    <button id="btnRespaldoNube" onclick="ejecutarRespaldoNube()" class="btn btn-success w-100 py-2 fw-bold">
+                        ☁️ Sincronizar Ahora
                     </button>
                 </div>
             </div>
         </div>
     </div>
+    
+<script>
+/**
+ * Ejecuta la llamada al controlador para el respaldo fragmentado en la nube
+ */
+function ejecutarRespaldoNube() {
+    Swal.fire({
+        title: '¿Iniciar respaldo en la nube?',
+        text: "Se generará un paquete comprimido y se subirá fragmentado a las cuentas de Google Drive configuradas. Esto puede tardar unos minutos dependiendo del tamaño de las actas.",
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, iniciar sincronización',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#198754'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            Swal.fire({
+                title: 'Sincronizando...',
+                html: 'Comprimiendo, fragmentando y subiendo partes a la nube.<br><b>Por favor, no cierre esta ventana.</b>',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+
+            $.post('?controller=sacrej&action=api_respaldo_nube', function(res) {
+                Swal.close();
+                if (res.status === 'ok') {
+                    Swal.fire('Éxito', res.msg, 'success');
+                } else if (res.status === 'partial') {
+                    // Generar lista de errores específicos devueltos por el controlador
+                    let detalleHtml = '<div class="text-start mt-2 small text-danger"><b>Detalles del error:</b><ul class="mb-0">';
+                    if (res.detalles && res.detalles.length > 0) {
+                        res.detalles.forEach(err => detalleHtml += `<li>${err}</li>`);
+                    } else {
+                        detalleHtml += '<li>Error de autenticación general con Google Drive.</li>';
+                    }
+                    detalleHtml += '</ul></div>';
+
+                    Swal.fire({
+                        title: 'Respaldo Fallido/Parcial',
+                        html: res.msg + detalleHtml + '<br><small class="text-muted">Verifique que las Service Accounts tengan habilitado el acceso a Google Drive API.</small>',
+                        icon: 'warning'
+                    });
+                } else {
+                    Swal.fire('Error', res.msg || 'No se pudo completar el respaldo.', 'error');
+                }
+            }, 'json').fail(function() {
+                Swal.fire('Error Crítico', 'El tiempo de espera se agotó o el servidor no respondió. El archivo podría ser demasiado grande para el tiempo de ejecución de PHP.', 'error');
+            });
+        }
+    });
+}
+</script>

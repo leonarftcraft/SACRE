@@ -151,14 +151,18 @@ class SacrejController
     // 🔒 Encripta el contenido de un archivo JSON
     private function _encrypt_content($content) {
         $key = $this->_get_enc_key();
+        $key = substr(hash('sha256', $key), 0, 32); // Normalizar llave a 32 bytes para AES-256
         $iv = openssl_random_pseudo_bytes(openssl_cipher_iv_length('AES-256-CBC'));
-        $encrypted = openssl_encrypt($content, 'AES-256-CBC', $key, 0, $iv);
+        // Usamos OPENSSL_RAW_DATA para mayor seguridad y evitar problemas de codificación doble
+        $encrypted = openssl_encrypt($content, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
         return base64_encode($iv) . '::' . base64_encode($encrypted);
     }
 
     // 🔓 Desencripta el contenido de un archivo JSON
     private function _decrypt_content($encryptedContent) {
-        $key = $this->_get_enc_key();
+        $rawKey = $this->_get_enc_key();
+        $normalizedKey = substr(hash('sha256', $rawKey), 0, 32);
+        
         $parts = explode('::', $encryptedContent);
         
         // 🔄 Si no tiene el separador '::', asumimos que es texto plano (compatibilidad)
@@ -166,7 +170,13 @@ class SacrejController
 
         $iv = base64_decode($parts[0]);
         $encrypted = base64_decode($parts[1]);
-        return openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
+
+        // 1. Intentar con el formato nuevo (Llave normalizada + RAW_DATA)
+        $dec = openssl_decrypt($encrypted, 'AES-256-CBC', $normalizedKey, OPENSSL_RAW_DATA, $iv);
+        if ($dec !== false) return $dec;
+
+        // 2. ⚠️ COMPATIBILIDAD CRÍTICA: Intentar con la llave original sin normalizar (Formato antiguo)
+        return openssl_decrypt($encrypted, 'AES-256-CBC', $rawKey, 0, $iv);
     }
 
     private function _leer_api_keys() {
@@ -1931,6 +1941,183 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
     echo json_encode($resultado);
     exit;
 }
+
+    /* ============================================================
+       ☁️ RESPALDO EN LA NUBE (FRAGMENTADO)
+       ============================================================ */
+
+    public function api_respaldo_nube()
+    {
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+
+        // 1. Validar llaves API registradas
+        $apiKeys = $this->_leer_api_keys();
+        $numPartes = count($apiKeys);
+
+        if ($numPartes === 0) {
+            echo json_encode(['status' => 'error', 'msg' => 'No hay llaves API (Cuentas de Google) registradas para el respaldo.']);
+            exit;
+        }
+
+        // 2. Generar archivo base (ZIP)
+        $tempZip = sys_get_temp_dir() . '/respaldo_master_' . time() . '.zip';
+        $source = 'view/images/actas';
+        $sqlPath = sys_get_temp_dir() . '/base_datos.sql';
+        $this->model->generar_backup_sql($sqlPath);
+
+        $zip = new ZipArchive();
+        if ($zip->open($tempZip, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
+            if (file_exists($sqlPath)) $zip->addFile($sqlPath, 'base_datos/base_datos.sql');
+            if (file_exists($source)) {
+                $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS), RecursiveIteratorIterator::LEAVES_ONLY);
+                foreach ($files as $name => $file) {
+                    if (!$file->isDir()) {
+                        $filePath = $file->getRealPath();
+                        $relativePath = 'imagenes/' . substr($filePath, strlen(realpath($source)) + 1);
+                        $zip->addFile($filePath, $relativePath);
+                    }
+                }
+            }
+            $zip->close();
+            if (file_exists($sqlPath)) unlink($sqlPath);
+        } else {
+            echo json_encode(['status' => 'error', 'msg' => 'Error al crear el archivo de respaldo base.']);
+            exit;
+        }
+
+        // 3. Fragmentar el archivo binariamente
+        $fileSize = filesize($tempZip);
+        $chunkSize = ceil($fileSize / $numPartes);
+        $handle = fopen($tempZip, "rb");
+        
+        $partesSubidas = 0;
+        $errores = [];
+        $indice = 0;
+
+        foreach ($apiKeys as $email => $keyData) {
+            $indice++;
+            $partName = "respaldo_part$indice.dat";
+            $partPath = sys_get_temp_dir() . '/' . $partName;
+            
+            // Crear el fragmento físico
+            $chunkData = fread($handle, $chunkSize);
+            file_put_contents($partPath, $chunkData);
+
+            // Desencriptar JSON de Google Drive
+            if (!empty($keyData['file_path']) && file_exists($keyData['file_path'])) {
+                $jsonEnc = file_get_contents($keyData['file_path']);
+                $jsonDec = $this->_decrypt_content($jsonEnc);
+                
+                if ($jsonDec) {
+                    $res = $this->_subir_a_drive_curl($jsonDec, $partPath, $partName);
+                    if ($res['success']) {
+                        $partesSubidas++;
+                    } else {
+                        $errores[] = "Error en cuenta $email: " . $res['msg'];
+                    }
+                } else {
+                    $errores[] = "No se pudo desencriptar la credencial de $email";
+                }
+            }
+            
+            if (file_exists($partPath)) unlink($partPath);
+        }
+
+        fclose($handle);
+        if (file_exists($tempZip)) unlink($tempZip);
+
+        echo json_encode([
+            'status' => ($partesSubidas === $numPartes) ? 'ok' : 'partial',
+            'msg' => "Respaldo procesado. Partes subidas: $partesSubidas de $numPartes.",
+            'detalles' => $errores
+        ]);
+        exit;
+    }
+
+    /**
+     * 🛰️ Sube un archivo a Google Drive usando cURL y Service Account JSON
+     */
+    private function _subir_a_drive_curl($jsonCreds, $filePath, $fileName) {
+        $creds = json_decode($jsonCreds, true);
+        if (!$creds) return ['success' => false, 'msg' => 'JSON de credenciales inválido.'];
+
+        // Helper para codificación Base64Url (requerido estrictamente para JWT)
+        $base64Url = function($data) {
+            return str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($data));
+        };
+
+        // 1. Generar JWT para obtener Access Token (OAuth2 Service Account)
+        $header = $base64Url(json_encode(['alg' => 'RS256', 'typ' => 'JWT']));
+        $iat = time() - 30; // 🕒 Margen de 30s por si el reloj del PC está algo adelantado
+        $exp = $iat + 3600;
+        $payload = $base64Url(json_encode([
+            'iss' => $creds['client_email'],
+            'scope' => 'https://www.googleapis.com/auth/drive.file',
+            'aud' => 'https://oauth2.googleapis.com/token',
+            'iat' => $iat,
+            'exp' => $exp
+        ]));
+
+        $signature = '';
+        if (!openssl_sign("$header.$payload", $signature, $creds['private_key'], 'SHA256')) {
+             return ['success' => false, 'msg' => 'Error de firma OpenSSL. Revise que la extensión esté activa.'];
+        }
+        $jwt = "$header.$payload." . $base64Url($signature);
+
+        // 2. Intercambiar JWT por Token
+        $ch = curl_init('https://oauth2.googleapis.com/token');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // 🛡️ Omitir verificación SSL (necesario en muchos XAMPP)
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+            'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+            'assertion' => $jwt
+        ]));
+        
+        $response = curl_exec($ch);
+        $curlErr = curl_error($ch);
+        $authRes = json_decode($response, true);
+        curl_close($ch);
+
+        $token = $authRes['access_token'] ?? '';
+
+        if (!$token) {
+            $detalle = $authRes['error_description'] ?? $authRes['error'] ?? $curlErr ?? 'Error desconocido';
+            return ['success' => false, 'msg' => 'Google rechazó el acceso: ' . $detalle];
+        }
+
+        // 3. Subida Simple a Drive (API v3)
+        $metadata = json_encode(['name' => $fileName]);
+        $fileData = file_get_contents($filePath);
+        
+        $boundary = "-------" . md5(time());
+        $postData = "--$boundary\r\n" .
+                    "Content-Type: application/json; charset=UTF-8\r\n\r\n" .
+                    $metadata . "\r\n" .
+                    "--$boundary\r\n" .
+                    "Content-Type: application/octet-stream\r\n\r\n" .
+                    $fileData . "\r\n" .
+                    "--$boundary--";
+
+        $ch = curl_init('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            "Authorization: Bearer $token",
+            "Content-Type: multipart/related; boundary=$boundary",
+            "Content-Length: " . strlen($postData)
+        ]);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
+        
+        $uploadRes = json_decode(curl_exec($ch), true);
+        curl_close($ch);
+
+        return isset($uploadRes['id']) 
+            ? ['success' => true, 'id' => $uploadRes['id']] 
+            : ['success' => false, 'msg' => 'Error al subir archivo.'];
+    }
 
     /* ============================================================
        💾 RESPALDO Y COPIAS DE SEGURIDAD
