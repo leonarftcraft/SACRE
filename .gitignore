@@ -10,6 +10,7 @@ connected_clients.json
 pending_bautizos.json
 server_status.txt
 ia_toggle_debug.log
+api_data/json_keys/
 
 # Archivos temporales del microservicio
 tools/AI_ser.pid

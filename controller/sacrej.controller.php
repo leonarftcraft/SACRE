@@ -85,6 +85,14 @@ class SacrejController
         require_once "view/layout.php";
     }
 
+    public function vista_administrar_drive()
+    {
+        $apiKeysGemini = $this->_leer_api_keys();
+        $driveCreds = $this->_leer_drive_creds();
+        $contenido = "view/administrar_drive.php";
+        require_once "view/layout.php";
+    }
+
     public function vista_respaldo()
     {
         $contenido = "view/respaldo.php";
@@ -275,6 +283,210 @@ class SacrejController
     }
 
     /* ============================================================
+       📂 GESTIÓN DE CREDENCIALES GOOGLE DRIVE
+       ============================================================ */
+
+    private function _get_drive_file_path() {
+        return 'drive_creds.enc';
+    }
+
+    private function _get_drive_json_file_path($email) {
+        return 'api_data/json_keys/drive_' . md5($email) . '.json';
+    }
+
+    private function _get_drive_json_content($email) {
+        $jsonFilePath = $this->_get_drive_json_file_path($email);
+        if (!file_exists($jsonFilePath)) return null;
+        return file_get_contents($jsonFilePath) ?: null;
+    }
+
+    private function _leer_drive_creds() {
+        $file = $this->_get_drive_file_path();
+        if (!file_exists($file)) return [];
+        $content = file_get_contents($file);
+        if (empty($content)) return [];
+        $decrypted = $this->_decrypt_content($content);
+        return json_decode($decrypted ?: $content, true) ?? [];
+    }
+
+    private function _guardar_drive_creds_file($data) {
+        $json = json_encode($data);
+        $content = $this->_encrypt_content($json);
+        file_put_contents($this->_get_drive_file_path(), $content);
+    }
+
+    public function guardar_drive_cred() {
+        header('Content-Type: application/json');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') exit;
+
+        $email = trim($_POST['email'] ?? '');
+        $folderAddress = trim($_POST['folderAddress'] ?? '');
+        $jsonContent = null;
+        $jsonFile = null;
+
+        // Procesar archivo JSON si existe
+        if (isset($_FILES['jsonFile']) && $_FILES['jsonFile']['error'] === UPLOAD_ERR_OK) {
+            $jsonContent = file_get_contents($_FILES['jsonFile']['tmp_name']);
+            // Validar que sea un JSON válido
+            if (json_decode($jsonContent) === null) {
+                echo json_encode(['status' => 'error', 'msg' => 'El archivo subido no es un JSON válido.']);
+                exit;
+            }
+            // Guardar el JSON en archivo físico encriptado
+            $jsonFile = 'drive_' . md5($email) . '.json';
+            $jsonFilePath = $this->_get_drive_json_file_path($email);
+            $jsonDir = dirname($jsonFilePath);
+            if (!is_dir($jsonDir)) {
+                mkdir($jsonDir, 0755, true);
+            }
+            if (!file_put_contents($jsonFilePath, $jsonContent)) {
+                echo json_encode(['status' => 'error', 'msg' => 'Error al guardar el archivo JSON.']);
+                exit;
+            }
+        }
+
+        if (empty($email) || empty($folderAddress)) {
+            echo json_encode(['status' => 'error', 'msg' => 'El correo y la dirección de carpeta son obligatorios.']);
+            exit;
+        }
+
+        $creds = $this->_leer_drive_creds();
+        $creds[$email] = [
+            'email' => $email,
+            'folder_address' => $folderAddress,
+            'json_file' => $jsonFile,
+            'fecha' => date('Y-m-d H:i:s')
+        ];
+
+        $this->_guardar_drive_creds_file($creds);
+        echo json_encode(['status' => 'ok', 'msg' => 'Credenciales de Google Drive guardadas correctamente.']);
+        exit;
+    }
+
+    public function api_crear_rclone_remote() {
+        header('Content-Type: application/json');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') exit;
+
+        $email = $_POST['email'] ?? '';
+        $creds = $this->_leer_drive_creds();
+        
+        if (!isset($creds[$email])) {
+            echo json_encode(['status' => 'error', 'msg' => 'Credenciales no encontradas.']);
+            exit;
+        }
+        
+        // 🆕 Lógica para asignar nombre de remoto secuencial si no existe
+        if (empty($creds[$email]['remote_name'])) {
+            $maxNum = 0;
+            foreach ($creds as $c) {
+                if (!empty($c['remote_name']) && preg_match('/Mi_nube_(\d+)/', $c['remote_name'], $matches)) {
+                    $num = (int)$matches[1];
+                    if ($num > $maxNum) $maxNum = $num;
+                }
+            }
+            $creds[$email]['remote_name'] = "Mi_nube_" . ($maxNum + 1);
+            $this->_guardar_drive_creds_file($creds);
+        }
+
+        $remote_name = $creds[$email]['remote_name'];
+        $jsonFilePath = $this->_get_drive_json_file_path($email);
+
+        $payload = [
+            'folder_id' => $creds[$email]['folder_address'],
+            'json_path' => realpath($jsonFilePath),
+            'remote_name' => $remote_name
+        ];
+
+        $ch = curl_init("http://127.0.0.1:5001/create_remote");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        echo $response ?: json_encode(['status' => 'error', 'message' => 'El microservicio Rcloner (5001) no responde.']);
+        exit;
+    }
+
+    public function api_test_rclone_upload() {
+        header('Content-Type: application/json');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') exit;
+
+        $email = $_POST['email'] ?? '';
+        $creds = $this->_leer_drive_creds();
+
+        if (!isset($creds[$email]) || empty($creds[$email]['remote_name'])) {
+            echo json_encode(['status' => 'error', 'message' => 'El remoto no ha sido configurado todavía.']);
+            exit;
+        }
+
+        $remote_name = $creds[$email]['remote_name'];
+        
+        $ch = curl_init("http://127.0.0.1:5001/test_upload");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['remote_name' => $remote_name]));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        echo $response ?: json_encode(['status' => 'error', 'message' => 'El microservicio Rcloner (5001) no responde.']);
+        exit;
+    }
+
+    public function api_verificar_rclone() {
+        header('Content-Type: application/json');
+        $url = "http://127.0.0.1:5001/status";
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        $response = curl_exec($ch);
+        curl_close($ch);
+        echo $response ?: json_encode(['installed' => false, 'error' => 'Servicio Rcloner no responde']);
+        exit;
+    }
+
+    public function api_instalar_rclone() {
+        header('Content-Type: application/json');
+        $url = "http://127.0.0.1:5001/install";
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+        $response = curl_exec($ch);
+        curl_close($ch);
+        echo $response ?: json_encode(['status' => 'error', 'message' => 'Error al comunicar con el servicio de instalación.']);
+        exit;
+    }
+
+    public function eliminar_drive_cred() {
+        header('Content-Type: application/json');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') exit;
+
+        $email = trim($_POST['email'] ?? '');
+        $creds = $this->_leer_drive_creds();
+
+        if (isset($creds[$email])) {
+            // Borrar archivo JSON si existe
+            if (!empty($creds[$email]['json_file'])) {
+                $jsonFilePath = $this->_get_drive_json_file_path($email);
+                if (file_exists($jsonFilePath)) {
+                    unlink($jsonFilePath);
+                }
+            }
+            unset($creds[$email]);
+            $this->_guardar_drive_creds_file($creds);
+            echo json_encode(['status' => 'ok', 'msg' => 'Registro eliminado.']);
+        } else {
+            echo json_encode(['status' => 'error', 'msg' => 'Registro no encontrado.']);
+        }
+        exit;
+    }
+
+    /* ============================================================
        📡📡 API Y LÓGICA DEL SERVIDOR IA (LOCAL)
        ============================================================ */
 
@@ -447,6 +659,119 @@ class SacrejController
 
         if (!$activo) {
             $port = 5000;
+            $output = @shell_exec("netstat -ano | findstr :$port | findstr LISTENING");
+            $activo = !empty($output);
+        }
+
+        echo json_encode(['activo' => $activo]);
+        exit;
+    }
+
+    /* ============================================================
+       🛰️ GESTIÓN DEL MICROSERVICIO RCLONER (PUERTO 5001)
+       ============================================================ */
+
+    public function api_toggle_server_rclone()
+    {
+        if (ob_get_length()) ob_clean(); 
+        header('Content-Type: application/json; charset=utf-8');
+
+        $pidFile = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'tools' . DIRECTORY_SEPARATOR . 'Rcloner.pid';
+        $serviceAction = $_POST['service_action'] ?? '';
+
+        $pythonCandidate = trim(shell_exec('where python 2>NUL')) ?: trim(shell_exec('where py 2>NUL'));
+        $pythonPath = '';
+        if ($pythonCandidate) {
+            $paths = array_filter(array_map('trim', preg_split('/\r?\n/', $pythonCandidate)));
+            if (!empty($paths)) $pythonPath = reset($paths);
+        }
+
+        if (empty($pythonPath)) {
+            echo json_encode(['success' => false, 'mensaje' => 'No se encontró Python en el sistema.']);
+            exit;
+        }
+
+        $scriptPath = realpath(dirname(__DIR__) . DIRECTORY_SEPARATOR . 'tools' . DIRECTORY_SEPARATOR . 'Rcloner.py');
+        if (!$scriptPath || !file_exists($scriptPath)) {
+            echo json_encode(['success' => false, 'mensaje' => 'No se encontró el script tools/Rcloner.py.']);
+            exit;
+        }
+
+        $workingDir = dirname($scriptPath);
+
+        if ($serviceAction === 'start') {
+            $powershellCandidate = trim(shell_exec('where powershell 2>NUL'));
+            if ($powershellCandidate) {
+                // Se agrega -Verb RunAs para solicitar privilegios de administrador al iniciar el proceso
+                $psCommand = "Start-Process -FilePath '$pythonPath' -ArgumentList '$scriptPath' -WorkingDirectory '$workingDir' -WindowStyle Hidden -Verb RunAs -PassThru | Select-Object -ExpandProperty Id";
+                $pid = trim(shell_exec("powershell -NoProfile -WindowStyle Hidden -Command \"$psCommand\""));
+
+                if (is_numeric($pid)) {
+                    file_put_contents($pidFile, $pid);
+                    echo json_encode(['success' => true, 'mensaje' => 'Microservicio Rcloner iniciado.']);
+                    exit;
+                }
+            }
+
+            // Fallback: usar cmd
+            $comando = "start /B \"\" cmd /C \"cd /d \"$workingDir\" && \"$pythonPath\" \"$scriptPath\"\" > NUL 2>&1";
+            @popen($comando, 'r');
+            echo json_encode(['success' => true, 'mensaje' => 'Microservicio Rcloner iniciado (CMD).']);
+        } else if ($serviceAction === 'stop') {
+            $stopped = false;
+            if (file_exists($pidFile)) {
+                $pid = trim(file_get_contents($pidFile));
+                if (is_numeric($pid)) {
+                    @shell_exec("taskkill /F /PID $pid /T > NUL 2>&1");
+                    @unlink($pidFile);
+                    $stopped = true;
+                }
+            }
+
+            if (!$stopped) {
+                $port = 5001;
+                $output = @shell_exec("netstat -ano | findstr :$port | findstr LISTENING");
+                if ($output) {
+                    $lines = explode("\n", trim($output));
+                    foreach ($lines as $line) {
+                        $parts = preg_split('/\s+/', trim($line), -1, PREG_SPLIT_NO_EMPTY);
+                        $pid = end($parts);
+                        if (!empty($pid) && is_numeric($pid)) {
+                            @shell_exec("taskkill /F /PID $pid /T > NUL 2>&1");
+                            $stopped = true;
+                        }
+                    }
+                }
+            }
+
+            echo json_encode([
+                'success' => $stopped, 
+                'mensaje' => $stopped ? 'Servicio Rcloner detenido correctamente.' : 'El servicio no parece estar activo.'
+            ]);
+        }
+        exit;
+    }
+
+    public function api_verificar_estado_server_rclone()
+    {
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+
+        $pidFile = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'tools' . DIRECTORY_SEPARATOR . 'Rcloner.pid';
+        $activo = false;
+
+        if (file_exists($pidFile)) {
+            $pid = trim(file_get_contents($pidFile));
+            if (is_numeric($pid)) {
+                $processList = trim(shell_exec("tasklist /FI \"PID eq $pid\" 2>NUL"));
+                if (preg_match('/\b' . preg_quote($pid, '/') . '\b/', $processList)) {
+                    $activo = true;
+                }
+            }
+        }
+
+        if (!$activo) {
+            $port = 5001;
             $output = @shell_exec("netstat -ano | findstr :$port | findstr LISTENING");
             $activo = !empty($output);
         }
@@ -2648,4 +2973,4 @@ public function generar_constancia_no_asentamiento()
 
 
 }
-?>
+?>    
