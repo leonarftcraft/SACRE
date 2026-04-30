@@ -2235,176 +2235,220 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
        💾 RESPALDO Y COPIAS DE SEGURIDAD
        ============================================================ */
 
-    public function descargar_backup_imagenes()
+    private function _formatear_tamano($bytes)
     {
-        // Verificar sesión y permisos (solo admin)
-        if (session_status() == PHP_SESSION_NONE) session_start();
-        if (!isset($_SESSION['RolUsu']) || ($_SESSION['RolUsu'] != 10 && $_SESSION['RolUsu'] != 100)) {
-            die("Acceso denegado.");
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        for ($i = 0; $bytes >= 1024 && $i < count($units) - 1; $i++) {
+            $bytes /= 1024;
         }
-
-        // 🛡️ Validación: Verificar si la extensión ZIP está habilitada
-        if (!class_exists('ZipArchive')) {
-            die("Error crítico: La extensión <b>php_zip</b> no está habilitada en el servidor. <br>Por favor, edite el archivo <i>php.ini</i>, descomente la línea <code>extension=zip</code> y reinicie Apache.");
-        }
-
-        // Ruta de la carpeta de imágenes (relativa al index.php)
-        $source = 'view/images/actas';
-        
-        if (!file_exists($source)) {
-            die("La carpeta de imágenes no existe o está vacía.");
-        }
-
-        // 🔹 Obtener nombre personalizado o usar default
-        $customName = isset($_GET['name']) ? preg_replace('/[^a-zA-Z0-9_-]/', '_', $_GET['name']) : 'respaldo_sacrej';
-        $zipName = $customName . '_' . date('Ymd_His') . '.zip';
-        $zipPath = sys_get_temp_dir() . '/' . $zipName;
-        
-        // 1. Generar SQL temporal
-        $sqlName = 'base_datos.sql'; // Nombre fijo dentro del ZIP para facilitar la restauración
-        $sqlPath = sys_get_temp_dir() . '/' . $sqlName;
-        $this->model->generar_backup_sql($sqlPath);
-
-        $zip = new ZipArchive();
-        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
-            
-            // 2. Agregar SQL al ZIP
-            if (file_exists($sqlPath)) {
-                $zip->addFile($sqlPath, 'base_datos/' . $sqlName);
-            }
-
-            // 3. Agregar Imágenes al ZIP
-            $files = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS),
-                RecursiveIteratorIterator::LEAVES_ONLY
-            );
-
-            foreach ($files as $name => $file) {
-                if (!$file->isDir()) {
-                    $filePath = $file->getRealPath();
-                    // Ruta relativa dentro del ZIP (carpeta imagenes/)
-                    $relativePath = 'imagenes/' . substr($filePath, strlen(realpath($source)) + 1);
-                    $zip->addFile($filePath, $relativePath);
-                }
-            }
-            $zip->close();
-            
-            // Borrar SQL temporal
-            if (file_exists($sqlPath)) unlink($sqlPath);
-        } else {
-            die("Error al crear el archivo ZIP. Verifique que la extensión ZipArchive esté habilitada en PHP.");
-        }
-
-        // Forzar descarga
-        if (file_exists($zipPath)) {
-            header('Content-Type: application/zip');
-            header('Content-Disposition: attachment; filename="' . $zipName . '"');
-            header('Content-Length: ' . filesize($zipPath));
-            header('Pragma: no-cache');
-            readfile($zipPath);
-            unlink($zipPath); // Borrar temporal
-            exit;
-        } else {
-            die("Error al generar la descarga.");
-        }
+        return round($bytes, 2) . ' ' . $units[$i];
     }
 
-    public function api_obtener_tamano_respaldo()
+    public function api_obtener_tamano_pre_respaldo()
     {
         if (ob_get_length()) ob_clean();
         header('Content-Type: application/json');
-        
-        // 1. Calcular tamaño de imágenes
-        $source = 'view/images/actas';
+
+        // 1. Tamaño de la carpeta de imágenes
+        $source = realpath('view/images/actas');
         $size = 0;
-        if (file_exists($source)) {
-            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS));
-            foreach ($iterator as $file) {
+        if ($source && is_dir($source)) {
+            $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS));
+            foreach ($files as $file) {
                 $size += $file->getSize();
             }
         }
 
-        // 2. Calcular tamaño BD
-        $sqlSize = $this->model->obtener_tamano_bd();
-        
-        $total = $size + $sqlSize;
-        
-        // Formatear a MB/GB
-        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        $power = $total > 0 ? floor(log($total, 1024)) : 0;
-        $formatted = number_format($total / pow(1024, $power), 2, '.', ',') . ' ' . $units[$power];
+        // 2. Tamaño de la Base de Datos
+        $dbSize = $this->model->obtener_tamano_bd();
 
-        echo json_encode(['status' => 'ok', 'size' => $formatted]);
+        echo json_encode(['status' => 'ok', 'formatted' => $this->_formatear_tamano($size + $dbSize)]);
         exit;
     }
 
-    public function api_generar_respaldo_local()
+    public function api_explorar_directorios()
     {
         if (ob_get_length()) ob_clean();
         header('Content-Type: application/json');
 
-        // Validar permisos (Admin)
-        if (session_status() == PHP_SESSION_NONE) session_start();
         if (!isset($_SESSION['RolUsu']) || ($_SESSION['RolUsu'] != 10 && $_SESSION['RolUsu'] != 100)) {
             echo json_encode(['status' => 'error', 'msg' => 'Acceso denegado.']);
             exit;
         }
 
-        $nombre = $_POST['nombre'] ?? 'respaldo';
-        $rutaDestino = $_POST['ruta'] ?? '';
-
-        // Normalizar ruta (Windows usa \, pero PHP maneja / bien)
-        $rutaDestino = rtrim(str_replace('\\', '/', $rutaDestino), '/');
-
-        // Validar o crear carpeta
-        if (!is_dir($rutaDestino)) {
-            if (!mkdir($rutaDestino, 0777, true)) {
-                echo json_encode(['status' => 'error', 'msg' => "La ruta '$rutaDestino' no existe y no se pudo crear."]);
-                exit;
-            }
-        }
-
-        // Generar ZIP en temporal primero
-        $zipName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $nombre) . '.zip';
-        $zipPathTemp = sys_get_temp_dir() . '/' . $zipName;
-        $source = 'view/images/actas';
-
-        // 1. Generar SQL
-        $sqlName = 'base_datos.sql';
-        $sqlPath = sys_get_temp_dir() . '/' . $sqlName;
-        $this->model->generar_backup_sql($sqlPath);
-
-        $zip = new ZipArchive();
-        if ($zip->open($zipPathTemp, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
-            if (file_exists($sqlPath)) $zip->addFile($sqlPath, 'base_datos/' . $sqlName);
+        $path = $_POST['path'] ?? '';
+        
+        // 🏠 VISTA INICIAL: MI EQUIPO (Root Virtual)
+        if ($path === '' || $path === 'ROOT') {
+            $userProfile = getenv('USERPROFILE'); // Ruta del usuario en Windows
+            $locations = [];
             
-            if (file_exists($source)) {
-                $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS), RecursiveIteratorIterator::LEAVES_ONLY);
-                foreach ($files as $name => $file) {
-                    if (!$file->isDir()) {
-                        $filePath = $file->getRealPath();
-                        $relativePath = 'imagenes/' . substr($filePath, strlen(realpath($source)) + 1);
-                        $zip->addFile($filePath, $relativePath);
+            // 1. Carpetas Estándar del Usuario
+            $userFolders = [
+                'Descargas' => $userProfile . DIRECTORY_SEPARATOR . 'Downloads',
+                'Documentos' => $userProfile . DIRECTORY_SEPARATOR . 'Documents',
+                'Imágenes'  => $userProfile . DIRECTORY_SEPARATOR . 'Pictures',
+                'Escritorio' => $userProfile . DIRECTORY_SEPARATOR . 'Desktop'
+            ];
+
+            foreach ($userFolders as $name => $fPath) {
+                if (is_dir($fPath)) {
+                    $locations[] = ['name' => $name, 'path' => realpath($fPath), 'icon' => 'folder-user'];
+                }
+            }
+
+            // 2. Unidades de Disco (Solo Windows)
+            if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+                exec('wmic logicaldisk get name', $output);
+                if ($output) {
+                    foreach ($output as $line) {
+                        $drive = trim($line);
+                        if (preg_match('/^[A-Z]:$/', $drive)) {
+                            $locations[] = ['name' => "Unidad ($drive)", 'path' => $drive . DIRECTORY_SEPARATOR, 'icon' => 'drive'];
+                        }
                     }
                 }
             }
-            $zip->close();
-            if (file_exists($sqlPath)) unlink($sqlPath);
-        } else {
-            echo json_encode(['status' => 'error', 'msg' => 'Error al crear el ZIP.']);
+
+            echo json_encode([
+                'status'    => 'ok',
+                'is_root'   => true,
+                'current'   => 'Mi Equipo',
+                'parent'    => '',
+                'locations' => $locations,
+                'dirs'      => []
+            ]);
+            exit;
+        }
+        
+        if (!is_dir($path)) {
+            echo json_encode(['status' => 'error', 'msg' => 'La ruta no existe o no es accesible.']);
             exit;
         }
 
-        // Mover a destino final
-        $destinoFinal = $rutaDestino . '/' . $zipName;
-        if (copy($zipPathTemp, $destinoFinal)) {
-            unlink($zipPathTemp);
-            echo json_encode(['status' => 'ok', 'msg' => "Respaldo guardado exitosamente en:<br><b>$destinoFinal</b>"]);
+        $realPath = realpath($path);
+        $parent = dirname($realPath);
+        
+        // Si estamos en la raíz de un disco (ej: C:\), el "atrás" vuelve al ROOT virtual
+        if ($parent === $realPath) {
+            $parent = 'ROOT';
+        }
+
+        $items = [];
+        try {
+            $iterator = new DirectoryIterator($realPath);
+            foreach ($iterator as $item) {
+                if ($item->isDot()) continue;
+
+                $isDir = $item->isDir();
+                $itemData = [
+                    'name'   => $item->getFilename(),
+                    'is_dir' => $isDir,
+                    'path'   => $item->getPathname()
+                ];
+
+                if (!$isDir) {
+                    $itemData['size'] = $this->_formatear_tamano($item->getSize());
+                } else {
+                    try { new DirectoryIterator($item->getPathname()); } catch (Exception $e) { continue; }
+                    $itemData['size'] = '';
+                }
+                $items[] = $itemData;
+            }
+            
+            usort($items, function($a, $b) {
+                if ($a['is_dir'] && !$b['is_dir']) return -1;
+                if (!$a['is_dir'] && $b['is_dir']) return 1;
+                return strcasecmp($a['name'], $b['name']);
+            });
+        } catch (Exception $e) {
+            echo json_encode(['status' => 'error', 'msg' => 'No se puede leer la carpeta.']);
+            exit;
+        }
+
+        echo json_encode([
+            'status' => 'ok',
+            'is_root' => false,
+            'current' => $realPath,
+            'parent' => $parent,
+            'items' => $items
+        ]);
+        exit;
+    }
+
+    public function api_generar_respaldo_7z()
+    {
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+
+        if (!isset($_SESSION['RolUsu']) || ($_SESSION['RolUsu'] != 10 && $_SESSION['RolUsu'] != 100)) {
+            echo json_encode(['status' => 'error', 'msg' => 'Acceso denegado.']);
+            exit;
+        }
+
+        $savePath = $_POST['save_path'] ?? 'backups';
+
+        // 1. Generar volcado SQL temporal
+        $sqlName = 'sacre_db_' . date('Ymd_His') . '.sql';
+        $sqlPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $sqlName;
+        if (!$this->model->generar_backup_sql($sqlPath)) {
+            echo json_encode(['status' => 'error', 'msg' => 'Error al generar el volcado de la base de datos.']);
+            exit;
+        }
+
+        // 2. Validar o crear carpeta de destino
+        if (!is_dir($savePath)) {
+            if (!@mkdir($savePath, 0777, true)) {
+                echo json_encode(['status' => 'error', 'msg' => 'No se pudo crear la carpeta de destino: ' . $savePath]);
+                exit;
+            }
+        }
+        
+        $fileName = 'Respaldo_SACRE_' . date('Ymd_His') . '.7z';
+        $finalPath = realpath($savePath) . DIRECTORY_SEPARATOR . $fileName;
+
+        $payload = [
+            'sources' => [realpath('view/images/actas'), $sqlPath],
+            'output_path' => $finalPath
+        ];
+
+        // 3. Solicitar compresión al microservicio Rcloner (Puerto 5001)
+        $ch = curl_init("http://127.0.0.1:5001/create_7z");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 600); // 10 min
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        @unlink($sqlPath); // Limpiar temporal
+
+        if ($httpCode !== 200) {
+            echo json_encode(['status' => 'error', 'msg' => 'El microservicio falló o no está activo (Puerto 5001).']);
         } else {
-            unlink($zipPathTemp);
-            echo json_encode(['status' => 'error', 'msg' => 'Error al guardar el archivo en la ruta destino. Verifique permisos.']);
+            $size = file_exists($finalPath) ? filesize($finalPath) : 0;
+            $sizeFormatted = $this->_formatear_tamano($size);
+            echo json_encode(['status' => 'ok', 'msg' => 'Respaldo 7z generado exitosamente.', 'full_path' => $finalPath, 'size' => $sizeFormatted]);
         }
         exit;
+    }
+
+    public function descargar_archivo_respaldo()
+    {
+        $path = $_GET['file'] ?? '';
+
+        if (!empty($path) && file_exists($path) && strpos($path, '.7z') !== false) {
+            header('Content-Type: application/x-7z-compressed');
+            header('Content-Disposition: attachment; filename="' . basename($path) . '"');
+            header('Content-Length: ' . filesize($path));
+            readfile($path);
+            exit;
+        } else {
+            die("Archivo no encontrado.");
+        }
     }
 
     /* ============================================================

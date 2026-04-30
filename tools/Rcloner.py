@@ -4,6 +4,7 @@ import zipfile
 import io
 import sys
 import subprocess
+import py7zr
 from flask import Flask, jsonify, request
 
 # Forzar codificación UTF-8 para evitar errores en Windows
@@ -128,6 +129,29 @@ def test_upload():
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
         return jsonify({"status": "error", "message": f"Error de Rclone: {error_msg}"}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/create_7z', methods=['POST'])
+def create_7z():
+    """Genera un archivo comprimido 7z usando py7zr."""
+    try:
+        data = request.json
+        sources = data.get('sources', [])
+        output_path = data.get('output_path')
+
+        if not output_path:
+            return jsonify({"status": "error", "message": "Ruta de salida no definida."}), 400
+
+        with py7zr.SevenZipFile(output_path, 'w') as archive:
+            for source in sources:
+                if os.path.exists(source):
+                    if os.path.isdir(source):
+                        archive.writeall(source, os.path.basename(source))
+                    else:
+                        archive.write(source, os.path.basename(source))
+        
+        return jsonify({"status": "ok", "message": "Respaldo 7z generado exitosamente."})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
