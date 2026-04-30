@@ -52,25 +52,47 @@
     <p class="text-center text-muted mb-5">Gestione las copias de seguridad de los archivos digitales y la base de datos del sistema.</p>
 
     <div class="row g-4">
-        <!-- 📦 Respaldo Completo (Local) -->
-        <div class="col-md-12">
+        <!-- 📦 Respaldo Local -->
+        <div class="col-md-6">
             <div class="card shadow h-100 border-0">
                 <div class="card-header bg-primary text-white text-center py-3">
-                    <h5 class="mb-0"><i class="bi bi-archive-fill"></i> Respaldo Completo (Local)</h5>
+                    <h5 class="mb-0"><i class="bi bi-hdd-fill me-2"></i> Respaldo Local</h5>
                 </div>
                 <div class="card-body d-flex flex-column">
                     <p class="card-text text-center mt-3">
-                        Esta opción generará y descargará un archivo comprimido (<strong>.7z</strong>) que contiene:
+                        Genera un archivo comprimido <strong>.7z</strong> de la base de datos e imágenes, guardándolo en una ruta específica del servidor local.
+                    </p>
+                    <div class="alert alert-info small mt-auto">
+                        <i class="bi bi-info-circle-fill"></i> El archivo se almacenará directamente en el servidor.
+                    </div>
+                    <button onclick="iniciarRespaldoLocal()" class="btn btn-primary w-100 py-2 fw-bold">
+                         Generar Respaldo
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ☁️ Respaldo en Google Drive -->
+        <div class="col-md-6">
+            <div class="card shadow h-100 border-0">
+                <div class="card-header bg-success text-white text-center py-3">
+                    <h5 class="mb-0"><i class="bi bi-google me-2"></i> Respaldo en Google Drive</h5>
+                </div>
+                <div class="card-body d-flex flex-column">
+                    <p class="card-text text-center mt-3">
+                        Crea un archivo comprimido <strong>.7z</strong> y lo divide en partes iguales según la cantidad de cuentas de Google Drive configuradas. Cada parte se sube automáticamente a una cuenta diferente usando rclone.
                         <ul class="text-start small text-muted mx-auto" style="max-width: 80%;">
                             <li>📂 Todas las imágenes de actas digitalizadas.</li>
                             <li>🗄️ Volcado SQL de la base de datos (sacrej).</li>
+                            <li>🔀 División automática en partes iguales.</li>
+                            <li>☁️ Subida distribuida a múltiples Google Drive.</li>
                         </ul>
                     </p>
                     <div class="alert alert-info small mt-auto">
-                        <i class="bi bi-info-circle-fill"></i> Guarde este archivo en una ubicación segura designada por la administración.
+                        <i class="bi bi-info-circle-fill"></i> Utiliza el microservicio rclone para dividir y distribuir el respaldo en la nube.
                     </div>
-                    <button onclick="solicitarRespaldo()" class="btn btn-primary w-100 py-2 fw-bold">
-                         Generar Respaldo
+                    <button onclick="iniciarRespaldoGoogleDrive()" class="btn btn-success w-100 py-2 fw-bold">
+                         Generar y Subir
                     </button>
                 </div>
             </div>
@@ -78,10 +100,12 @@
     </div>
     
 <script>
+let driveRemotes = []; // Para almacenar las configuraciones de Drive
+
 /**
- * Inicia el proceso de respaldo delegando la compresión al microservicio Python
+ * Inicia el proceso de respaldo local
  */
-function solicitarRespaldo() {
+function iniciarRespaldoLocal() {
     Swal.fire({
         title: 'Calculando tamaño...',
         text: 'Analizando imágenes y base de datos.',
@@ -105,7 +129,7 @@ function solicitarRespaldo() {
 /**
  * Abre un explorador de archivos modal para seleccionar la ruta de destino
  */
-function explorarCarpetaServidor(path = '', pesoEstimado = null) {
+function explorarCarpetaServidor(path = '', pesoEstimado = null, targetAction = 'local') {
     // Mantener el peso entre navegaciones
     const sizeHeader = pesoEstimado ? `<span class="badge bg-warning text-dark float-end" style="font-size: 0.7rem;">Peso estimado: ${pesoEstimado}</span>` : '';
 
@@ -204,7 +228,7 @@ function explorarCarpetaServidor(path = '', pesoEstimado = null) {
                 return document.getElementById('pathDestino').value;
             }
         }).then((result) => {
-            if (result.isConfirmed) procesarGeneracion7z(result.value, pesoEstimado);
+            if (result.isConfirmed) procesarGeneracion7z(result.value, pesoEstimado, targetAction);
         });
     }, 'json');
 }
@@ -250,7 +274,7 @@ function seleccionarCarpeta(element) {
 /**
  * Envía la ruta seleccionada al controlador PHP para que Python genere el archivo
  */
-function procesarGeneracion7z(ruta, pesoEstimado = '') {
+function procesarGeneracion7z(ruta, pesoEstimado = '', targetAction = 'local', remoteName = null) {
     Swal.fire({
         title: 'Generando Respaldo...',
         html: `
@@ -265,15 +289,29 @@ function procesarGeneracion7z(ruta, pesoEstimado = '') {
         didOpen: () => Swal.showLoading()
     });
 
-    $.post('?controller=sacrej&action=api_generar_respaldo_7z', { save_path: ruta }, function(res) {
+    let postData = { save_path: ruta };
+    let actionUrl = '?controller=sacrej&action=api_generar_respaldo_7z'; // Default local
+
+    if (targetAction === 'drive') {
+        actionUrl = '?controller=sacrej&action=api_respaldo_drive';
+        postData.remote_name = remoteName;
+    }
+
+    $.post(actionUrl, postData, function(res) {
         Swal.close();
         if (res.status === 'ok') {
+            let successHtml = `El archivo 7z se ha generado correctamente.<br><br>`;
+            if (targetAction === 'local') {
+                successHtml += `<small class="text-primary fw-bold">${res.full_path}</small><br>`;
+            } else {
+                successHtml += `<small class="text-primary fw-bold">Subido a Google Drive (${remoteName})</small><br>`;
+            }
+            successHtml += `<div class="mt-3"><span class="badge bg-info text-dark">Peso final: ${res.size}</span></div>`;
+
             Swal.fire({
                 icon: 'success',
-                title: '¡Respaldo Guardado!',
-                html: `El archivo 7z se ha generado correctamente en el servidor:<br><br>
-                       <small class="text-primary fw-bold">${res.full_path}</small><br>
-                       <div class="mt-3"><span class="badge bg-info text-dark">Peso final: ${res.size}</span></div>`,
+                title: targetAction === 'local' ? '¡Respaldo Guardado!' : '¡Respaldo en Drive Completado!',
+                html: successHtml,
                 confirmButtonText: 'Entendido'
             });
         } else {
@@ -281,17 +319,18 @@ function procesarGeneracion7z(ruta, pesoEstimado = '') {
         }
     }, 'json').fail(function() {
         Swal.close();
-        Swal.fire('Error', 'No se pudo conectar con el microservicio. Verifique el puerto 5001.', 'error');
+        Swal.fire('Error', 'No se pudo conectar con el microservicio Rcloner. Verifique que esté activo (Puerto 5001).', 'error');
     });
 }
 
 /**
- * Ejecuta la llamada al controlador para el respaldo fragmentado en la nube
+ * Inicia el proceso de respaldo a Google Drive
  */
-function ejecutarRespaldoNube() {
+function iniciarRespaldoGoogleDrive() {
+    console.log('Función iniciarRespaldoGoogleDrive llamada');
     Swal.fire({
         title: '¿Iniciar respaldo en la nube?',
-        text: "Se generará un paquete comprimido y se subirá fragmentado a las cuentas de Google Drive configuradas. Esto puede tardar unos minutos dependiendo del tamaño de las actas.",
+        text: "Se generará un paquete comprimido, se dividirá en partes iguales y cada parte se subirá a una cuenta de Google Drive usando rclone. Esto puede tardar unos minutos dependiendo del tamaño de las actas.",
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'Sí, iniciar sincronización',
@@ -301,35 +340,35 @@ function ejecutarRespaldoNube() {
         if (result.isConfirmed) {
             Swal.fire({
                 title: 'Sincronizando...',
-                html: 'Comprimiendo, fragmentando y subiendo partes a la nube.<br><b>Por favor, no cierre esta ventana.</b>',
+                html: 'Comprimiendo, dividiendo en partes y subiendo a la nube.<br><b>Por favor, no cierre esta ventana.</b>',
                 allowOutsideClick: false,
                 didOpen: () => Swal.showLoading()
             });
 
-            $.post('?controller=sacrej&action=api_respaldo_nube', function(res) {
+            $.post('?controller=sacrej&action=api_respaldo_rclone_split', function(res) {
                 Swal.close();
                 if (res.status === 'ok') {
-                    Swal.fire('Éxito', res.msg, 'success');
-                } else if (res.status === 'partial') {
-                    // Generar lista de errores específicos devueltos por el controlador
-                    let detalleHtml = '<div class="text-start mt-2 small text-danger"><b>Detalles del error:</b><ul class="mb-0">';
-                    if (res.detalles && res.detalles.length > 0) {
-                        res.detalles.forEach(err => detalleHtml += `<li>${err}</li>`);
-                    } else {
-                        detalleHtml += '<li>Error de autenticación general con Google Drive.</li>';
+                    let resultsHtml = '<div class="text-start mt-2 small"><b>Detalles de subida:</b><ul class="mb-0">';
+                    if (res.results && res.results.length > 0) {
+                        res.results.forEach(result => resultsHtml += `<li>${result}</li>`);
                     }
-                    detalleHtml += '</ul></div>';
-
+                    resultsHtml += '</ul></div>';
+                    if (res.invalid_remotes && res.invalid_remotes.length > 0) {
+                        resultsHtml += '<div class="text-start mt-3 small text-warning"><b>Remotes omitidos:</b><ul class="mb-0">';
+                        res.invalid_remotes.forEach(err => resultsHtml += `<li>${err}</li>`);
+                        resultsHtml += '</ul></div>';
+                    }
                     Swal.fire({
-                        title: 'Respaldo Fallido/Parcial',
-                        html: res.msg + detalleHtml + '<br><small class="text-muted">Verifique que las Service Accounts tengan habilitado el acceso a Google Drive API.</small>',
-                        icon: 'warning'
+                        title: 'Respaldo Completado',
+                        html: res.msg + resultsHtml,
+                        icon: 'success'
                     });
                 } else {
                     Swal.fire('Error', res.msg || 'No se pudo completar el respaldo.', 'error');
                 }
             }, 'json').fail(function() {
-                Swal.fire('Error Crítico', 'El tiempo de espera se agotó o el servidor no respondió. El archivo podría ser demasiado grande para el tiempo de ejecución de PHP.', 'error');
+                Swal.close();
+                Swal.fire('Error', 'No se pudo conectar con el microservicio Rcloner. Verifique que esté activo (Puerto 5001).', 'error');
             });
         }
     });

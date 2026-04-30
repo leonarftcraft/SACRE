@@ -2451,6 +2451,106 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         }
     }
 
+    public function api_respaldo_rclone_split()
+    {
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+
+        if (!isset($_SESSION['RolUsu']) || ($_SESSION['RolUsu'] != 10 && $_SESSION['RolUsu'] != 100)) {
+            echo json_encode(['status' => 'error', 'msg' => 'Acceso denegado.']);
+            exit;
+        }
+
+        // Verificar que el microservicio esté activo
+        $ch_status = curl_init("http://127.0.0.1:5001/status");
+        curl_setopt($ch_status, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch_status, CURLOPT_TIMEOUT, 5);
+        $status_response = curl_exec($ch_status);
+        $status_code = curl_getinfo($ch_status, CURLINFO_HTTP_CODE);
+        curl_close($ch_status);
+
+        if ($status_code !== 200) {
+            echo json_encode(['status' => 'error', 'msg' => 'El microservicio Rcloner no está activo. Inicie el servicio en tools/Rcloner.py (puerto 5001).']);
+            exit;
+        }
+
+        // 1. Generar volcado SQL temporal
+        $sqlName = 'sacre_db_' . date('Ymd_His') . '.sql';
+        $sqlPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $sqlName;
+        if (!$this->model->generar_backup_sql($sqlPath)) {
+            echo json_encode(['status' => 'error', 'msg' => 'Error al generar el volcado de la base de datos.']);
+            exit;
+        }
+
+        // 2. Crear archivo 7z temporal
+        $fileName = 'Respaldo_SACRE_' . date('Ymd_His') . '.7z';
+        $tempDir = sys_get_temp_dir();
+        $finalPath = $tempDir . DIRECTORY_SEPARATOR . $fileName;
+
+        $payload = [
+            'sources' => [realpath('view/images/actas'), $sqlPath],
+            'output_path' => $finalPath
+        ];
+
+        // 3. Solicitar compresión al microservicio Rcloner
+        $ch = curl_init("http://127.0.0.1:5001/create_7z");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 600); // 10 min
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        @unlink($sqlPath); // Limpiar temporal SQL
+
+        if ($httpCode !== 200) {
+            echo json_encode(['status' => 'error', 'msg' => 'Error al generar el respaldo comprimido.']);
+            exit;
+        }
+
+        // 4. Dividir y subir usando rclone
+        $creds = $this->_leer_drive_creds();
+        $remoteNames = [];
+        foreach ($creds as $c) {
+            if (!empty($c['remote_name'])) {
+                $remoteNames[] = $c['remote_name'];
+            }
+        }
+
+        if (empty($remoteNames)) {
+            echo json_encode(['status' => 'error', 'msg' => 'No hay remotes configurados para las cuentas de Google Drive.']);
+            exit;
+        }
+
+        $splitPayload = ['file_path' => $finalPath, 'remote_names' => $remoteNames];
+
+        $ch2 = curl_init("http://127.0.0.1:5001/split_and_upload");
+        curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch2, CURLOPT_POST, true);
+        curl_setopt($ch2, CURLOPT_POSTFIELDS, json_encode($splitPayload));
+        curl_setopt($ch2, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        curl_setopt($ch2, CURLOPT_TIMEOUT, 1200); // 20 min para subida
+        
+        $response2 = curl_exec($ch2);
+        $httpCode2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+        curl_close($ch2);
+
+        if ($httpCode2 !== 200) {
+            echo json_encode(['status' => 'error', 'msg' => 'Error al dividir y subir el respaldo.']);
+        } else {
+            $data = json_decode($response2, true);
+            if ($data['status'] === 'ok') {
+                echo json_encode(['status' => 'ok', 'msg' => $data['message'], 'results' => $data['results']]);
+            } else {
+                echo json_encode(['status' => 'error', 'msg' => $data['message']]);
+            }
+        }
+        exit;
+    }
+
     /* ============================================================
        👥 GESTIÓN DE USUARIOS (activar / desactivar / eliminar)
        ============================================================ */
