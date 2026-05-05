@@ -19,7 +19,6 @@ if (session_status() === PHP_SESSION_NONE) {
     <!-- 🔹 JS global para vistas internas (ANTES de las vistas) -->
     <script src="view/js/jquery-3.6.0.min.js"></script>
     <script src="view/js/bootstrap.bundle.min.js"></script>
-    <script src="view/js/sweetalert.js"></script>
     <script src="view/js/sweetalert2.all.min.js"></script>
 </head>
 

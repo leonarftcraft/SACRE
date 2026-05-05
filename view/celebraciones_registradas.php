@@ -536,7 +536,9 @@ $(document).ready(function() {
           $digCont.empty();
 
           if (d.imagen) {
-            $imgCont.html(`<a href="${d.imagen}" target="_blank" class="btn btn-sm btn-success">📷 Ver Imagen Relacionada</a>`);
+            // Construir la URL del visor si es un archivo .dat (case-insensitive check)
+            const visorUrl = d.imagen.toLowerCase().includes('.dat') ? `controller/visor.php?img=${encodeURIComponent(d.imagen)}` : d.imagen;
+            $imgCont.html(`<a href="${visorUrl}" target="_blank" class="btn btn-sm btn-success">📷 Ver Imagen Relacionada</a>`);
             if (d.digitalizador) {
                 $digCont.text("Digitalizado por: " + d.digitalizador);
             }

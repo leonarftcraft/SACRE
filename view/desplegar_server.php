@@ -83,8 +83,8 @@
                                     <td><?= htmlspecialchars($row['NumFol']) ?></td>
                                     <td class="text-nowrap">
                                         <?php if (!empty($row['UrlArchivo'])): ?>
-                                            <?php $rutaImg = htmlspecialchars($row['UrlArchivo']); ?>
-                                            <?php $rutaVisor = (strpos($rutaImg, '.dat') !== false) ? 'controller/visor.php?img=' . urlencode($rutaImg) : $rutaImg; ?>
+                                            <?php $rutaOriginal = $row['UrlArchivo']; ?>
+                                            <?php $rutaVisor = (stripos($rutaOriginal, '.dat') !== false) ? 'controller/visor.php?img=' . urlencode($rutaOriginal) : $rutaOriginal; ?>
                                             <a href="<?= $rutaVisor ?>" target="_blank" class="btn btn-sm btn-success ms-1" title="Ver Imagen">
                                                 📷
                                             </a>
@@ -466,7 +466,7 @@ function actualizarClientes() {
                 let btnPermitir = (c.status === 'pending') 
                     ? `<button class="btn btn-sm btn-success py-0 me-2" onclick="permitirCliente('${c.nombre}')">Permitir</button>` 
                     : '<span class="badge bg-light text-primary me-2"><i class="bi bi-check-circle"></i> OK</span>';
-
+                // 🆕 Pasar client_unique_id a la función desconectarCliente
                 // Cálculo de color de inactividad
                 let segs = c.inactividad;
                 // Rojo al acercarse a los 300s (5 min), amarillo después de los 180s (3 min)
@@ -492,7 +492,7 @@ function actualizarClientes() {
                         <span>🟢 ${c.nombre}</span>
                         <div>
                             ${btnPermitir}
-                            <button class="btn btn-sm btn-outline-danger py-0" onclick="desconectarCliente('${c.nombre}')" title="Desconectar">
+                            <button class="btn btn-sm btn-outline-danger py-0" onclick="desconectarCliente('${c.nombre}', '${c.client_unique_id}')" title="Desconectar">
                                 ❌
                             </button>
                         </div>
@@ -523,7 +523,7 @@ function permitirCliente(nombre) {
     }, 'json');
 }
 
-function desconectarCliente(nombre) {
+function desconectarCliente(nombre, clientUniqueId) {
     Swal.fire({
         title: '¿Desconectar cliente?',
         text: `Se desconectará a ${nombre} del servidor.`,
@@ -532,8 +532,8 @@ function desconectarCliente(nombre) {
         confirmButtonText: 'Sí, desconectar',
         cancelButtonText: 'Cancelar'
     }).then((result) => {
-        if (result.isConfirmed) {
-            $.post('?controller=sacrej&action=api_desconectar_cliente', { nombre: nombre }, function(res) {
+        if (result.isConfirmed) { // 🆕 Pasar clientUniqueId
+            $.post('?controller=sacrej&action=api_desconectar_cliente', { nombre: nombre, client_unique_id: clientUniqueId }, function(res) {
                 if (res.success) {
                     actualizarClientes();
                 }

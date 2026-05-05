@@ -34,6 +34,7 @@
                         <div class="mb-3">
                             <label class="form-label small fw-bold">Dirección de Carpeta (Drive ID)</label>
                             <input type="text" id="folderAddress" class="form-control form-control-sm" placeholder="Pegue aquí el ID de la carpeta de Drive">
+                            <div class="form-text" style="font-size: 0.7rem;">Para Shared Drives, use el ID del Shared Drive. Asegúrese de agregar el email de la Service Account como miembro del Shared Drive con permisos de Editor.</div>
                         </div>
 
                         <div class="d-grid">

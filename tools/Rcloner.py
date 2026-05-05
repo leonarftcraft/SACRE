@@ -100,7 +100,7 @@ def test_upload():
         remote_name = data.get('remote_name', 'Mi_nube_1')
         
         # 2. Intentar subir estrictamente el archivo sugerido por el usuario
-        file_to_upload = r"C:\Users\USUARIO\Documents\eureka2.txt"
+        file_to_upload = r"C:\xampp\htdocs\SACRE\backups\Respaldo_SACRE_20260430_193058.7z"
 
         if not os.path.exists(file_to_upload):
             return jsonify({

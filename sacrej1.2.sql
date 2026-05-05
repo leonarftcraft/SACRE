@@ -43,8 +43,8 @@ CREATE TABLE `celebracion` (
 -- Estructura de tabla para la tabla `individuos`
 --
 
-CREATE TABLE `individuos` (
-  `idInd` int(20) NOT NULL,
+CREATE TABLE `individuos` ( 
+  `idInd` varchar(50) NOT NULL, -- Changed to VARCHAR to store composite ID
   `NomInd` text NOT NULL,
   `ApeInd` text NOT NULL,
   `LugNacInd` text NOT NULL,
@@ -61,8 +61,8 @@ CREATE TABLE `individuos` (
 -- Estructura de tabla para la tabla `individuo_celebracion`
 --
 
-CREATE TABLE `individuo_celebracion` (
-  `IdInd` int(20) NOT NULL,
+CREATE TABLE `individuo_celebracion` ( 
+  `IdInd` varchar(50) NOT NULL, -- Changed to VARCHAR to match individuos.idInd
   `IdCel` int(15) NOT NULL,
   `RegCiv` varchar(15) NOT NULL,
   `NotMar` text NOT NULL,
@@ -249,7 +249,7 @@ ALTER TABLE `celebracion`
 -- Indices de la tabla `individuos`
 --
 ALTER TABLE `individuos`
-  ADD PRIMARY KEY (`idInd`),
+  ADD PRIMARY KEY (`idInd`), -- No AUTO_INCREMENT as it's constructed
   ADD KEY `IdUsu` (`IdUsu`);
 
 --
@@ -257,7 +257,7 @@ ALTER TABLE `individuos`
 --
 ALTER TABLE `individuo_celebracion`
   ADD KEY `IdInd` (`IdInd`),
-  ADD KEY `IdCel` (`IdCel`);
+  ADD KEY `IdCel` (`IdCel`); 
 
 --
 -- Indices de la tabla `jerarquia_ministro`
@@ -276,7 +276,7 @@ ALTER TABLE `ministro_celebrante`
 -- Indices de la tabla `padres`
 --
 ALTER TABLE `padres`
-  ADD PRIMARY KEY (`IdPad`),
+  ADD PRIMARY KEY (`IdPad`), 
   ADD KEY `idx_IdInd` (`IdInd`);
 
 --
@@ -284,7 +284,7 @@ ALTER TABLE `padres`
 --
 ALTER TABLE `padrinos`
   ADD PRIMARY KEY (`IdPadri`),
-  ADD KEY `idx_IdInd` (`IdInd`),
+  ADD KEY `idx_IdInd` (`IdInd`), 
   ADD KEY `fk_padrinos_tipcel` (`TipCelPad`);
 
 --
@@ -360,8 +360,8 @@ ALTER TABLE `individuos`
 -- Filtros para la tabla `individuo_celebracion`
 --
 ALTER TABLE `individuo_celebracion`
-  ADD CONSTRAINT `individuo_celebracion_ibfk_2` FOREIGN KEY (`IdCel`) REFERENCES `celebracion` (`IdCel`),
-  ADD CONSTRAINT `individuo_celebracion_ibfk_3` FOREIGN KEY (`IdInd`) REFERENCES `individuos` (`idInd`);
+  ADD CONSTRAINT `individuo_celebracion_ibfk_2` FOREIGN KEY (`IdCel`) REFERENCES `celebracion` (`IdCel`), 
+  ADD CONSTRAINT `individuo_celebracion_ibfk_3` FOREIGN KEY (`IdInd`) REFERENCES `individuos` (`idInd`); 
 
 --
 -- Filtros para la tabla `ministro_celebrante`
@@ -373,13 +373,13 @@ ALTER TABLE `ministro_celebrante`
 -- Filtros para la tabla `padres`
 --
 ALTER TABLE `padres`
-  ADD CONSTRAINT `padres_ibfk_1` FOREIGN KEY (`IdInd`) REFERENCES `individuos` (`idInd`);
+  ADD CONSTRAINT `padres_ibfk_1` FOREIGN KEY (`IdInd`) REFERENCES `individuos` (`idInd`); 
 
 --
 -- Filtros para la tabla `padrinos`
 --
 ALTER TABLE `padrinos`
-  ADD CONSTRAINT `padrinos_ibfk_1` FOREIGN KEY (`IdInd`) REFERENCES `individuos` (`idInd`);
+  ADD CONSTRAINT `padrinos_ibfk_1` FOREIGN KEY (`IdInd`) REFERENCES `individuos` (`idInd`); 
 
 --
 -- Filtros para la tabla `preguntas_seguridad`

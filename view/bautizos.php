@@ -194,8 +194,64 @@
       <button type="reset" class="btn btn-secondary">Limpiar</button>
       <button type="button" id="btnGuardarBautizo" class="btn btn-success">Guardar</button>
     </div>
+
+    <!-- 📸 Sección de Carga de Imagen Manual -->
+    <div class="card mt-5 border-primary">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Cargar Imagen del Folio (Manual)</h5>
+        </div>
+        <div class="card-body">
+            <p class="card-text small text-muted">Utilice esta sección para adjuntar una imagen del folio si no está usando el sistema de digitalización móvil con IA.</p>
+            
+            <div class="mb-3">
+                <label for="digitalizadorNombreManual" class="form-label">Nombre del Digitalizador:</label>
+                <input type="text" id="digitalizadorNombreManual" class="form-control" placeholder="Ej: Juan Pérez" required>
+            </div>
+
+            <button type="button" class="btn btn-info w-100 mb-3" id="btnActivarRecepcion">
+                Mostrar QR para Subir Imagen
+            </button>
+
+            <div id="manualUploadArea" class="text-center hidden">
+                <p class="text-muted small">Escanee este código QR con un móvil para subir la imagen:</p>
+                <div id="qrcode" class="d-inline-block p-2 border rounded mb-3"></div>
+                <p class="text-muted small">O acceda a: <a href="#" id="manualUploadLink" target="_blank"></a></p>
+                <div class="spinner-border text-primary hidden" role="status" id="manualUploadSpinner">
+                    <span class="visually-hidden">Esperando imagen...</span>
+                </div>
+                <p class="text-primary mt-2 hidden" id="manualUploadStatus">Esperando imagen...</p>
+            </div>
+
+            <div id="imagenManualPreview" class="mt-3 hidden">
+                <h6>Imagen Recibida:</h6>
+                <img id="previewImg" src="" alt="Imagen del Folio" class="img-fluid rounded shadow-sm" style="max-height: 200px;">
+                <p class="small text-muted mt-2">Digitalizado por: <span id="previewDigitalizador"></span></p>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="btnQuitarImagenManual">Quitar Imagen</button>
+            </div>
+
+            <input type="hidden" id="RutaImagenManual" name="RutaImagen">
+            <input type="hidden" id="NombreDigitalizadorManual" name="NombreDigitalizador">
+        </div>
+    </div>
   </form>
 </div>
+
+<!-- Incluir qrcode.min.js al final del body para asegurar que el DOM esté listo -->
+<script src="view/js/qrcode.min.js"></script>
+<script>
+  // 🐛 DEBUG: Verificar si la librería QRCode se cargó después de su inclusión.
+  // Si este error persiste:
+  // 1. Abra las herramientas de desarrollador de su navegador (F12).
+  // 2. Vaya a la pestaña "Network" (Red) y recargue la página. Busque "qrcode.min.js".
+  //    Asegúrese de que se cargue con un estado 200 OK y no con un 404 (No Encontrado) o 500 (Error del Servidor).
+  // 3. Si se carga correctamente, vaya a la pestaña "Sources" (Fuentes) o "Debugger" y abra "qrcode.min.js".
+  //    Verifique que el archivo no esté vacío o corrupto y que contenga la definición de la librería QRCode.
+  if (typeof QRCode === 'undefined') {
+    console.error("ERROR: QRCode library is NOT loaded after script tag. Please verify that 'view/js/qrcode.min.js' exists, is accessible, and contains valid JavaScript.");
+  } else {
+    console.log("DEBUG: QRCode library IS loaded after script tag.");
+  }
+</script>
 
 <script>
   (function () {
@@ -414,6 +470,10 @@
         const jsonData = {};
         formData.forEach((item) => (jsonData[item.name] = item.value));
 
+        // 🆕 Añadir datos de imagen manual si existen
+        jsonData['RutaImagen'] = $('#RutaImagenManual').val();
+        jsonData['NombreDigitalizador'] = $('#NombreDigitalizadorManual').val();
+
         // 🧩 Bloquear botón y mostrar carga
         $btn.prop("disabled", true);
         if (window.Swal) {
@@ -470,6 +530,152 @@
           },
         });
       });
+
+      /* =========================================
+         6. LÓGICA DE CARGA DE IMAGEN MANUAL
+         ========================================= */
+      let manualUploadSessionId = null;
+      let manualUploadPollingInterval = null;
+
+      // Generar un ID de sesión único para la comunicación
+      function generateSessionId() {
+          return 'manual_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+      }
+
+      $('#btnActivarRecepcion').click(function() {
+          console.log("DEBUG: btnActivarRecepcion clicked."); // Confirm button click
+          const digitalizador = $('#digitalizadorNombreManual').val().trim();
+          if (!digitalizador) {
+              notify('warning', 'Digitalizador Requerido', 'Por favor, ingrese el nombre del digitalizador.');
+              return;
+          }
+
+          manualUploadSessionId = generateSessionId();
+          
+          const uploadUrl = `${window.location.origin}${window.location.pathname}?controller=sacrej&action=vista_cliente_manual_upload&session_id=${manualUploadSessionId}`;
+          
+          // 🐛 DEBUG: Log para verificar si QRCode está disponible y la URL generada
+          console.log("DEBUG: QRCode library status at button click:", typeof QRCode !== 'undefined');
+          console.log("DEBUG: Generated upload URL:", uploadUrl);
+
+          $('#manualUploadLink').attr('href', uploadUrl).text(uploadUrl);
+          // 🆕 Asegurarse de que el área del QR sea visible ANTES de generarlo
+          $('#manualUploadArea').removeClass('hidden'); // Asegurarse de que el contenedor principal esté visible
+          $('#qrcode').removeClass('hidden'); // Asegurarse de que el div del QR esté visible
+          
+          // 🆕 Asegurarse de que el área del QR sea visible ANTES de generarlo
+          $('#manualUploadArea').removeClass('hidden');
+          $('#qrcode').empty();
+
+          const qrcodeElement = document.getElementById("qrcode");
+          if (typeof QRCode === 'undefined') {
+              console.error("ERROR: QRCode library is not loaded. Make sure view/js/qrcode.min.js is accessible.");
+              notify('error', 'Error QR', 'La librería de QR no se cargó correctamente. Verifique la consola para más detalles.');
+          } else if (!qrcodeElement) {
+              console.error("ERROR: QR code target element #qrcode not found.");
+              notify('error', 'Error QR', 'El elemento donde se debe mostrar el QR no se encontró. Verifique el HTML.');
+          } else {
+              console.log("DEBUG: Attempting to generate QR code into #qrcode element.");
+              // 🐛 DEBUG: Verificar si el elemento #qrcode está visible antes de renderizar
+              console.log("DEBUG: #qrcode element visibility before render:", $(qrcodeElement).is(':visible'));
+              
+              // Intentar generar el QR
+              try {
+                  const qr = new QRCode(qrcodeElement, {
+                      text: uploadUrl,
+                      width: 128,
+                      height: 128,
+                      colorDark : "#000000",
+                      colorLight : "#ffffff",
+                      correctLevel : QRCode.CorrectLevel.H
+                  });
+              } catch (qrError) {
+                  console.error("ERROR: Failed to instantiate QRCode:", qrError);
+                  notify('error', 'Error QR', 'Hubo un error al intentar generar el código QR. Revise la consola.');
+              }
+              
+              // 🐛 DEBUG: Verificar si el QR se renderizó y es visible después de un pequeño retraso
+              setTimeout(() => {
+                  const qrCanvas = qrcodeElement.querySelector('canvas');
+                  if (qrCanvas) {
+                      console.log("DEBUG: QR Canvas dimensions (width, height):", qrCanvas.offsetWidth, qrCanvas.offsetHeight);
+                      if (qrCanvas.offsetWidth === 0 || qrCanvas.offsetHeight === 0 || $(qrCanvas).is(':hidden')) {
+                          console.warn("WARNING: QR code canvas is rendered but has zero dimensions. Check CSS visibility/display properties.");
+                          notify('warning', 'QR Oculto', 'El código QR se generó pero no es visible. Revise el CSS o el tamaño del contenedor.');
+                      } else {
+                          console.log("DEBUG: QR code canvas is visible and has dimensions.");
+                          notify('success', 'QR Generado', 'El código QR se ha generado correctamente. Si no lo ve, revise el CSS.');
+                      }
+                  } else {
+                      console.warn("WARNING: QRCode library did not render a canvas element inside #qrcode.");
+                  }
+              }, 100); // Pequeño retraso para asegurar que el DOM se actualice
+          }
+
+          $('#manualUploadSpinner').removeClass('hidden');
+          $('#manualUploadStatus').removeClass('hidden').text('Esperando imagen...');
+          $('#imagenManualPreview').addClass('hidden');
+          $('#RutaImagenManual').val('');
+          $('#NombreDigitalizadorManual').val('');
+
+          // Iniciar polling
+          if (manualUploadPollingInterval) clearInterval(manualUploadPollingInterval);
+          manualUploadPollingInterval = setInterval(checkManualUploadStatus, 3000); // Cada 3 segundos
+      });
+
+      function checkManualUploadStatus() {
+          if (!manualUploadSessionId) return;
+
+          $.post('?controller=sacrej&action=api_check_manual_upload_status', { session_id: manualUploadSessionId }, function(res) {
+              if (res.status === 'ready') {
+                  clearInterval(manualUploadPollingInterval);
+                  manualUploadPollingInterval = null;
+
+                  const data = res.data;
+                  $('#RutaImagenManual').val(data.ruta);
+                  $('#NombreDigitalizadorManual').val(data.digitalizador);
+
+                  // Mostrar preview de la imagen
+                  let visorUrl = data.ruta.includes('.dat') ? `controller/visor.php?img=${encodeURIComponent(data.ruta)}` : data.ruta;
+                  $('#previewImg').attr('src', visorUrl);
+                  $('#previewDigitalizador').text(data.digitalizador);
+                  $('#imagenManualPreview').removeClass('hidden');
+
+                  $('#manualUploadArea').addClass('hidden'); // Ocultar QR y spinner
+                  $('#manualUploadSpinner').addClass('hidden');
+                  $('#manualUploadStatus').addClass('hidden');
+
+                  notify('success', 'Imagen Recibida', 'La imagen del folio ha sido cargada exitosamente.');
+              }
+          }, 'json').fail(function() {
+              // Manejar errores de conexión si es necesario, pero no detener el polling
+              console.warn('Error al verificar estado de carga manual.');
+          });
+      }
+
+      $('#btnQuitarImagenManual').click(function() {
+          const ruta = $('#RutaImagenManual').val();
+          if (ruta) {
+              $.post('?controller=sacrej&action=api_borrar_imagen_cancelada', { ruta: ruta }, function(res) {
+                  if (res.status === 'ok') {
+                      notify('info', 'Imagen Eliminada', 'La imagen temporal ha sido eliminada.');
+                  } else {
+                      notify('error', 'Error', res.msg);
+                  }
+              }, 'json');
+          }
+          $('#RutaImagenManual').val('');
+          $('#NombreDigitalizadorManual').val('');
+          $('#imagenManualPreview').addClass('hidden');
+          $('#previewImg').attr('src', '');
+          $('#previewDigitalizador').text('');
+          manualUploadSessionId = null; // Resetear sesión
+          if (manualUploadPollingInterval) {
+              clearInterval(manualUploadPollingInterval);
+              manualUploadPollingInterval = null;
+          }
+      });
+
     });
   })();
 </script>

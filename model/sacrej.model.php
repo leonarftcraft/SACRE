@@ -249,11 +249,12 @@ class sacrejmodel
             }
 
             // 1️⃣ INDIVIDUO
-            $sqlInd = "INSERT INTO individuos (NomInd, ApeInd, LugNacInd, FecNacInd, SexInd, FilInd, IdUsu)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)";
+            $individuo['IdInd'] = "{$celebracion['NumLib']}-{$celebracion['NumFol']}-{$celebracion['IdCel']}"; // Construct IdInd
+            $sqlInd = "INSERT INTO individuos (IdInd, NomInd, ApeInd, LugNacInd, FecNacInd, SexInd, FilInd, IdUsu)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
             $stmtInd = $this->conexion->prepare($sqlInd);
-            $stmtInd->bind_param(
-                "ssssiis",
+            $stmtInd->bind_param("sssssiis",
+                $individuo['IdInd'], // Use the constructed IdInd
                 $individuo['NomInd'],
                 $individuo['ApeInd'],
                 $individuo['LugNacInd'],
@@ -265,9 +266,6 @@ class sacrejmodel
             if (!$stmtInd->execute()) {
                 throw new Exception("Error al registrar individuo: " . $stmtInd->error);
             }
-            
-            // 🔹 Capturar el ID autogenerado por la BD
-            $individuo['IdInd'] = $this->conexion->insert_id;
 
             // 2️⃣ CELEBRACIÓN
             $sqlCel = "INSERT INTO celebracion (IdCel, FechCel, TipCel, NumLib, NumFol, IdMin, Lugar)
@@ -296,17 +294,17 @@ class sacrejmodel
             // 3️⃣ RELACIÓN individuo ↔ celebración
             $sqlRel = "INSERT INTO individuo_celebracion (IdInd, IdCel, RegCiv, NotMar, IdImgActa, EstCel)
                     VALUES (?, ?, ?, ?, ?, ?)";
-            $stmtRel = $this->conexion->prepare($sqlRel);
-            $stmtRel->bind_param("iissii", $individuo['IdInd'], $idCelebracionInterno, $enlace['RegCiv'], $enlace['NotMar'], $idImgActa, $enlace['EstCel']);
+            $stmtRel = $this->conexion->prepare($sqlRel); // IdInd is now string
+            $stmtRel->bind_param("sssiis", $individuo['IdInd'], $idCelebracionInterno, $enlace['RegCiv'], $enlace['NotMar'], $idImgActa, $enlace['EstCel']);
             if (!$stmtRel->execute()) {
                 throw new Exception("Error al vincular individuo con celebración: " . $stmtRel->error);
             }
 
             // 4️⃣ MADRE
-            $sqlPadres = "INSERT INTO padres (IdInd, Nom, Ape, Sex)
+            $sqlPadres = "INSERT INTO padres (IdInd, Nom, Ape, Sex) 
                         VALUES (?, ?, ?, ?)";
             $stmtPad = $this->conexion->prepare($sqlPadres);
-            $stmtPad->bind_param("sssi", $individuo['IdInd'], $madre['Nom'], $madre['Ape'], $madre['Sex']);
+            $stmtPad->bind_param("sssi", $individuo['IdInd'], $madre['Nom'], $madre['Ape'], $madre['Sex']); // IdInd is now string
             if (!$stmtPad->execute()) {
                 throw new Exception("Error al registrar madre: " . $stmtPad->error);
             }
@@ -356,6 +354,32 @@ class sacrejmodel
         $stmt->execute();
         $res = $stmt->get_result();
         return ($res && $res->num_rows > 0);
+    }
+
+    public function verificar_folio_existente($libro, $folio)
+    {
+        $sql = "SELECT COUNT(*) AS total FROM celebracion WHERE NumLib = ? AND NumFol = ?";
+        $stmt = $this->conexion->prepare($sql);
+        $stmt->bind_param("ii", $libro, $folio);
+        $stmt->execute();
+        $res = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $res['total'] > 0;
+    }
+
+    public function obtener_folios_registrados($libro)
+    {
+        $sql = "SELECT DISTINCT NumFol FROM celebracion WHERE NumLib = ? ORDER BY NumFol ASC";
+        $stmt = $this->conexion->prepare($sql);
+        $stmt->bind_param("i", $libro);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $folios = [];
+        while ($row = $res->fetch_assoc()) {
+            $folios[] = (int)$row['NumFol'];
+        }
+        $stmt->close();
+        return $folios;
     }
 
 
@@ -690,7 +714,7 @@ class sacrejmodel
             // 1. Actualizar Individuo
             $sqlInd = "UPDATE individuos SET NomInd=?, ApeInd=?, FecNacInd=?, LugNacInd=?, SexInd=?, FilInd=? WHERE IdInd=?";
             $stmtInd = $this->conexion->prepare($sqlInd);
-            $stmtInd->bind_param("sssssis", 
+            $stmtInd->bind_param("sssssis", // IdInd is string
                 $data['NomInd'], $data['ApeInd'], $data['FecNacInd'], $data['LugNacInd'], $data['SexInd'], $data['FilInd'], $idInd
             );
             $stmtInd->execute();
@@ -708,14 +732,14 @@ class sacrejmodel
 
             // 3. Actualizar Enlace (RegCiv, NotMar)
             $sqlRel = "UPDATE individuo_celebracion SET RegCiv=?, NotMar=?, EstCel=? WHERE IdCel=? AND IdInd=?";
-            $stmtRel = $this->conexion->prepare($sqlRel);
-            $stmtRel->bind_param("ssiis", $data['RegCiv'], $data['NotMar'], $data['EstCel'], $idInterno, $idInd);
+            $stmtRel = $this->conexion->prepare($sqlRel); // IdInd is string
+            $stmtRel->bind_param("sssis", $data['RegCiv'], $data['NotMar'], $data['EstCel'], $idInterno, $idInd);
             $stmtRel->execute();
             $stmtRel->close();
 
             // 4. Actualizar Padres (Borrar e insertar o Update condicional. Haremos Update por Sexo para simplificar)
             // Madre (Sex=2)
-            $sqlMad = "UPDATE padres SET Nom=?, Ape=? WHERE IdInd=? AND Sex=2";
+            $sqlMad = "UPDATE padres SET Nom=?, Ape=? WHERE IdInd=? AND Sex=2"; // IdInd is string
             $stmtMad = $this->conexion->prepare($sqlMad);
             $stmtMad->bind_param("sss", $data['NomMad'], $data['ApeMad'], $idInd);
             $stmtMad->execute();
@@ -724,11 +748,11 @@ class sacrejmodel
             // Padre (Sex=1) - Verificar si existe primero, si no insertar
             if (!empty($data['NomPad']) || !empty($data['ApePad'])) {
                 // Intentar update
-                $sqlPad = "UPDATE padres SET Nom=?, Ape=? WHERE IdInd=? AND Sex=1";
+                $sqlPad = "UPDATE padres SET Nom=?, Ape=? WHERE IdInd=? AND Sex=1"; // IdInd is string
                 $stmtPad = $this->conexion->prepare($sqlPad);
                 $stmtPad->bind_param("sss", $data['NomPad'], $data['ApePad'], $idInd);
                 $stmtPad->execute();
-                if ($stmtPad->affected_rows === 0) {
+                if ($stmtPad->affected_rows === 0) { // If no rows were updated, it might not exist
                     // Si no actualizó nada, quizás no existía, verificar e insertar
                     $stmtPad->close();
                     // Check simple
@@ -746,14 +770,14 @@ class sacrejmodel
 
             // 5. Actualizar Padrinos (Por Sexo: 1=Padrino, 2=Madrina)
             // Padrino
-            $sqlPadr1 = "UPDATE padrinos SET Nom=?, Ape=? WHERE IdInd=? AND Sex=1 AND TipCelPad=1";
+            $sqlPadr1 = "UPDATE padrinos SET Nom=?, Ape=? WHERE IdInd=? AND Sex=1 AND TipCelPad=1"; // IdInd is string
             $stmtP1 = $this->conexion->prepare($sqlPadr1);
             $stmtP1->bind_param("sss", $data['Pad1Nom'], $data['Pad1Ape'], $idInd);
             $stmtP1->execute();
             $stmtP1->close();
 
             // Madrina
-            $sqlPadr2 = "UPDATE padrinos SET Nom=?, Ape=? WHERE IdInd=? AND Sex=2 AND TipCelPad=1";
+            $sqlPadr2 = "UPDATE padrinos SET Nom=?, Ape=? WHERE IdInd=? AND Sex=2 AND TipCelPad=1"; // IdInd is string
             $stmtP2 = $this->conexion->prepare($sqlPadr2);
             $stmtP2->bind_param("sss", $data['Pad2Nom'], $data['Pad2Ape'], $idInd);
             $stmtP2->execute();

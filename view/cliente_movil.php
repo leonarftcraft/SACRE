@@ -48,16 +48,31 @@
         <hr>
         
         <div class="py-4">
-            <h4>Escanear Documento</h4>
-            <p class="text-muted small">Toma una foto clara del documento para extraer el texto.</p>
-            
-            <!-- 🤖 Selector de Modelo -->
-            <div class="mt-2 text-start">
-                <label class="form-label small fw-bold mb-1">Modelo de Análisis:</label>
-                <select id="modelSelector" class="form-select form-select-sm">
-                    <option value="gemini-3.1-flash-lite-preview" selected>gemini-3.1-flash-lite (Sin límites)</option>
-                    <option value="gemini-3-flash-preview">gemini-3-flash-preview (Límite 18/día)</option>
-                </select>
+            <div id="div-libro-init">
+                <h4>Configuración de Libro</h4>
+                <p class="text-muted small">Indique el libro en el que va a trabajar.</p>
+                <div class="mb-3">
+                    <input type="number" id="inputLibroInit" class="form-control form-control-lg text-center" placeholder="Número de Libro">
+                </div>
+                <button class="btn btn-primary btn-big" onclick="establecerLibroYVerificar()">Siguiente</button>
+            </div>
+
+            <div id="div-capture-controls" class="hidden">
+                <h4>Escanear Documento</h4>
+                <p class="text-muted small">Toma una foto clara del documento para extraer el texto.</p>
+                
+                <div class="mb-3">
+                    <button class="btn btn-sm btn-outline-primary" onclick="cambiarLibro()">🔄 Cambiar de Libro (<span id="spanLibroActual"></span>)</button>
+                </div>
+                
+                <!-- 🤖 Selector de Modelo -->
+                <div class="mt-2 text-start">
+                    <label class="form-label small fw-bold mb-1">Modelo de Análisis:</label>
+                    <select id="modelSelector" class="form-select form-select-sm">
+                        <option value="gemini-3.1-flash-lite-preview" selected>gemini-3.1-flash-lite (Sin límites)</option>
+                        <option value="gemini-3-flash-preview">gemini-3-flash-preview (Límite 18/día)</option>
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -67,7 +82,7 @@
         <!-- Input para GALERÍA -->
         <input type="file" id="galleryInput" accept="image/*" style="display: none;" onchange="procesarImagen(this)">
 
-        <div class="d-grid gap-2">
+        <div id="div-capture-buttons" class="d-grid gap-2 hidden">
             <button id="btnCaptureCamera" class="btn btn-success btn-big" onclick="abrirCamaraConValidacion()">
                 📸 Capturar con Cámara
             </button>
@@ -103,7 +118,7 @@
         <div class="row mb-3">
             <div class="col-6">
                 <label for="libroGeneral" class="form-label fw-bold">Libro:</label>
-                <input type="number" class="form-control form-control-lg text-center" id="libroGeneral">
+                <input type="number" class="form-control form-control-lg text-center bg-light" id="libroGeneral" readonly>
             </div>
             <div class="col-6">
                 <label for="folioGeneral" class="form-label fw-bold">Folio:</label>
@@ -196,6 +211,7 @@
         let paginaCerrandose = false; // 🛡️ Evitar latidos al salir
         let heartbeatInterval = null; 
         let ultimaExtraccionIA = null; // 🔹 Almacena los datos originales de la IA para el cálculo de correcciones
+        let clientUniqueId = sessionStorage.getItem('client_unique_id'); // 🆕 ID único del cliente
         
         // 🔹 Datos de ministros en JS para validación
         let ministrosData = [
@@ -213,6 +229,11 @@
         let colaMinistros = [];
         let actasPendientes = [];
 
+        // 🆕 Generar ID único si no existe
+        if (!clientUniqueId) {
+            clientUniqueId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            sessionStorage.setItem('client_unique_id', clientUniqueId);
+        }
         function toggleCaptureButtons(disabled) {
             $('#btnCaptureCamera, #btnCaptureGallery').prop('disabled', disabled);
         }
@@ -251,6 +272,91 @@
             $('#folioGeneral').val('');
             ultimaExtraccionIA = null;
             rutaImagenActual = "";
+            folioEsDuplicado = false;
+        }
+
+        let folioEsDuplicado = false;
+
+        function validarLibroFolio() {
+            let libro = $('#libroGeneral').val();
+            let folio = $('#folioGeneral').val();
+
+            if (!libro || !folio) return;
+
+            // 🧹 Limpieza de seguridad: Asegurar que solo viajen números
+            libro = String(libro).replace(/\D/g, '');
+            folio = String(folio).replace(/\D/g, '');
+
+            if (!libro || !folio) return;
+
+            $.post('?controller=sacrej&action=api_verificar_folio_existente', { libro: libro, folio: folio }, function(res) {
+                if (res.exists) {
+                    folioEsDuplicado = true;
+                    $('#folioGeneral, #libroGeneral').addClass('is-invalid border-danger');
+                    $('#btnGuardarTodo').prop('disabled', true).addClass('btn-secondary').removeClass('btn-success');
+                    
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Folio Duplicado',
+                        text: 'El Libro ' + libro + ' Folio ' + folio + ' ya se encuentra en la base de datos.',
+                    });
+                } else {
+                    folioEsDuplicado = false;
+                    $('#folioGeneral, #libroGeneral').removeClass('is-invalid border-danger').addClass('is-valid border-success');
+                    $('#btnGuardarTodo').prop('disabled', false).removeClass('btn-secondary').addClass('btn-success');
+                }
+            }, 'json');
+        }
+
+        function cambiarLibro() {
+            if (estaProcesando) return;
+            Swal.fire({
+                title: '¿Cambiar de Libro?',
+                text: "Se reiniciará la configuración del libro actual.",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, cambiar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    libroActual = null;
+                    estaVerificando = false; // 🔍 Regresar a estatus de inactividad al cambiar libro
+                    sessionStorage.removeItem('libro_actual_sacra'); // 🧹 Limpiar persistencia
+                    $('#inputLibroInit').val('').focus();
+                    huboInteraccion = true;
+                }
+            });
+        }
+
+        function establecerLibroYVerificar() {
+            const libro = $('#inputLibroInit').val();
+            if (!libro || isNaN(parseInt(libro))) {
+                Swal.fire('Error', 'Debe ingresar un número de libro válido', 'warning');
+                return;
+            }
+
+            $.post('?controller=sacrej&action=api_obtener_folios_faltantes', { libro: libro }, function(res) {
+                if (res.status === 'ok') {
+                    libroActual = libro;
+                    sessionStorage.setItem('libro_actual_sacra', libroActual); // 💾 Persistir libro
+
+                    $('#spanLibroActual').text(libroActual);
+                    $('#libroGeneral').val(libroActual);
+                    estaVerificando = false; // 🔍 En digitalización (cámara) debe mostrarse el tiempo de inactividad
+                    
+                    Swal.fire({
+                        title: 'Estado del Libro ' + libro,
+                        text: res.msg,
+                        icon: 'info',
+                        confirmButtonText: 'Empezar a Digitalizar'
+                    }).then(() => {
+                        $('#div-libro-init').addClass('hidden');
+                        $('#div-capture-controls, #div-capture-buttons').removeClass('hidden');
+                    });
+                } else {
+                    Swal.fire('Error', res.msg, 'error');
+                }
+            }, 'json');
         }
 
         function crearHtmlFormulario(index) {
@@ -279,6 +385,7 @@
                             <div class="col-12"><label class="form-label small">N°</label><input type="number" id="IdCel${idSuffix}" name="IdCel" class="form-control form-control-sm" required data-was-required="true"></div>
                             <input type="hidden" id="NumFol${idSuffix}" name="NumFol">
                             <input type="hidden" id="NumLib${idSuffix}" name="NumLib">
+                            <input type="hidden" id="IdInd${idSuffix}" name="IdInd"> <!-- Nuevo: IdInd construido -->
                             <input type="hidden" id="RutaImagen${idSuffix}" name="RutaImagen">
                         </div>
                         
@@ -426,6 +533,10 @@
            $('#ApePad' + idSuffix).val(cleanValue(datos['Apellido del Padre']));
             $('#FilInd' + idSuffix).val(obtenerValorFiliacion(cleanValue(datos['Filiacion'])));
             $('#FechCel' + idSuffix).val(formatearFechaParaInput(cleanValue(datos['Fecha de bautizo'])));
+
+            // 🆕 Construir y asignar IdInd
+            const constructedIdInd = `${libroActual}-${folioActual}-${cleanValue(datos['N°'])}`;
+            $('#IdInd' + idSuffix).val(constructedIdInd);
             // 🔹 Si la IA no devuelve lugar, poner el default. Si devuelve, usar el de la IA.
             const lugarBautizo = cleanValue(datos['Lugar de Bautizo']);
             $('#Lugar' + idSuffix).val(lugarBautizo || "Parroquia Sagrado Corazon de Jesus");
@@ -453,13 +564,23 @@
 
         // 🔹 Restaurar sesión al cargar la página (si se actualizó)
         $(document).ready(function() {
-            // ... (código de restauración de sesión sin cambios)
-        });
+            // 📖 Restaurar libro si ya estaba configurado
+            let libroGuardado = sessionStorage.getItem('libro_actual_sacra');
+            if (libroGuardado) {
+                libroActual = libroGuardado;
+                $('#spanLibroActual').text(libroActual);
+                $('#libroGeneral').val(libroActual);
+                estaVerificando = false; // 🔍 Al restaurar sesión en cámara, permitir ver el timer
+            }
 
-        // 🔹 Restaurar sesión al cargar la página (si se actualizó)
-        $(document).ready(function() {
             let guardado = sessionStorage.getItem('usuario_sacra');
             if(guardado) {
+                // 🆕 Si hay un usuario guardado, pero el unique ID no coincide, forzar logout
+                // Esto previene que un usuario se "re-conecte" con el nombre de otro si el ID es diferente
+                if (sessionStorage.getItem('client_unique_id') !== clientUniqueId) {
+                    sessionStorage.removeItem('usuario_sacra');
+                    return;
+                }
                 $('#inputNombre').val(guardado);
                 conectarUsuario(true); // true = es una reconexión automática
             }
@@ -475,13 +596,18 @@
             }
 
             // Registrar en el servidor
-            $.post('?controller=sacrej&action=api_registrar_cliente', { nombre: nombre }, function(res) {
+            $.post('?controller=sacrej&action=api_registrar_cliente', { nombre: nombre, client_unique_id: clientUniqueId }, function(res) {
                 if (res.success) {
                     usuarioActual = nombre;
                     sessionStorage.setItem('usuario_sacra', nombre); // ✅ Guardar sesión
                     $('#userDisplay').text(usuarioActual);
                     $('#screen-login').addClass('hidden');
                     $('#screen-wait').removeClass('hidden'); // Mostrar espera al conectar
+                    
+                    // 🆕 Si es una reconexión exitosa, no mostrar el modal de espera
+                    if (res.reconnected) {
+                        $('#screen-wait').addClass('hidden');
+                    }
                 } else {
                     // Si falla la reconexión (ej. servidor cerrado), limpiamos
                     if(esReconexion) sessionStorage.removeItem('usuario_sacra');
@@ -495,8 +621,9 @@
         // 🔹 Desconectar manualmente (Botón Salir)
         function desconectar() {
             sessionStorage.removeItem('usuario_sacra'); // ✅ Limpiar sesión
+            sessionStorage.removeItem('libro_actual_sacra'); // 🧹 Limpiar libro
             if (usuarioActual) {
-                $.post('?controller=sacrej&action=api_desconectar_cliente', { nombre: usuarioActual }, function() {
+                $.post('?controller=sacrej&action=api_desconectar_cliente', { nombre: usuarioActual, client_unique_id: clientUniqueId }, function() {
                     usuarioActual = ""; // Limpiar para que no se dispare el beacon
                     location.reload();
                 }).fail(function() {
@@ -512,8 +639,10 @@
         // 🔹 Función centralizada para sacar al usuario
         function salirDelSistema(mensaje) {
             sessionStorage.removeItem('usuario_sacra'); // ✅ Limpiar sesión
+            sessionStorage.removeItem('libro_actual_sacra'); // 🧹 Limpiar libro
             usuarioActual = "";
             $('#screen-camera').addClass('hidden');
+            estaVerificando = false; // 🔍 Resetear estatus al salir
             $('#screen-login').removeClass('hidden');
             $('#inputNombre').val('');
             $('#resultado').addClass('hidden').text('');
@@ -732,9 +861,10 @@
                                         }
 
                                         // 🔹 Extraer Folio (asumimos que es el mismo para todos en la foto)
-                                        const primerFolio = actas.find(a => a['Folio N°'])?.['Folio N°'];
+                                        let primerFolio = actas.find(a => a['Folio N°'])?.['Folio N°'];
                                         if (primerFolio) {
-                                            folioActual = primerFolio;
+                                            // 🧹 Limpiar texto de la IA antes de asignar al input numeric
+                                            folioActual = String(primerFolio).replace(/\D/g, '');
                                         } else {
                                             folioActual = '';
                                         }
@@ -790,39 +920,8 @@
                             // NOTA: Ya no mostramos la pantalla aquí, lo hace verificarMinistros()
                             };
 
-                            if (libroActual) {
-                                $('#libroGeneral').val(libroActual);
-                                procesarRespuestaIA();
-                            } else {
-                                Swal.fire({
-                                    title: 'Número de Libro',
-                                    text: 'Por favor, ingresa el número del libro para estos registros.',
-                                    input: 'number',
-                                    inputAttributes: {
-                                        autocapitalize: 'off'
-                                    },
-                                    showCancelButton: true,
-                                    confirmButtonText: 'Confirmar',
-                                    showLoaderOnConfirm: true,
-                                    preConfirm: (numeroLibro) => {
-                                        if (!numeroLibro || isNaN(parseInt(numeroLibro))) {
-                                            Swal.showValidationMessage('Debes ingresar un número válido');
-                                            return false;
-                                        }
-                                        return numeroLibro;
-                                    },
-                                    allowOutsideClick: () => !Swal.isLoading()
-                                }).then((result) => {
-                                    if (result.isConfirmed) {
-                                        estaVerificando = true; // 🔍 Iniciando verificación al pedir libro
-                                        libroActual = result.value;
-                                        $('#libroGeneral').val(libroActual);
-                                        procesarRespuestaIA();
-                                    } else {
-                                        estaVerificando = false;
-                                    }
-                                });
-                            }
+                            $('#libroGeneral').val(libroActual);
+                            procesarRespuestaIA();
 
                         } catch (e) {
                             console.error(e);
@@ -1045,6 +1144,13 @@
             
             $('#screen-camera').addClass('hidden');
             $('#screen-form').removeClass('hidden');
+
+            // 🔄 Asegurar que todos los formularios individuales hereden los valores globales
+            $('input[name="NumLib"]').val(libroActual);
+            $('input[name="NumFol"]').val(folioActual);
+
+            // 🔍 Validar si el libro/folio ya existe al mostrar los formularios tras la IA
+            validarLibroFolio();
         }
 
         function verificarEstadoLatido() {
@@ -1054,6 +1160,7 @@
             $.post('?controller=sacrej&action=api_heartbeat', { 
                 nombre: usuarioActual,
                 processing: String(estaProcesando),
+                client_unique_id: clientUniqueId, // 🆕 Enviar ID único
                 verifying: String(estaVerificando),
                 active: String(huboInteraccion), // ⚡ Informar actividad al servidor
                 modelo_ia: modelIA
@@ -1103,6 +1210,14 @@
                         $('#screen-wait').addClass('hidden');
                         if ($('#screen-form').hasClass('hidden')) {
                             $('#screen-camera').removeClass('hidden');
+                            // 🆕 Gestión de visibilidad según configuración de libro
+                            if (libroActual) {
+                                $('#div-libro-init').addClass('hidden');
+                                $('#div-capture-controls, #div-capture-buttons').removeClass('hidden');
+                            } else {
+                                $('#div-libro-init').removeClass('hidden');
+                                $('#div-capture-controls, #div-capture-buttons').addClass('hidden');
+                            }
                         }
                     } else {
                         $('#screen-camera').addClass('hidden');
@@ -1156,16 +1271,46 @@
             $('#libroGeneral').on('input change', function() {
                 libroActual = $(this).val();
                 $('input[name="NumLib"]').val(libroActual);
+                
+                // 🆕 Sincronizar nomenclaturas de IdInd (Libro-Folio-N°)
+                $('.form-bautizo').each(function() {
+                    const idx = $(this).data('index');
+                    const nReg = $('#IdCel_' + idx).val();
+                    const fGlobal = $('#folioGeneral').val();
+                    if(libroActual && fGlobal && nReg) {
+                        $('#IdInd_' + idx).val(`${libroActual}-${fGlobal}-${nReg}`);
+                    }
+                });
+
+                validarLibroFolio(); // 🔍 Validar al cambiar manualmente
             });
 
             // Actualizar folioActual cuando se edita el campo
             $('#folioGeneral').on('input change', function() {
                 folioActual = $(this).val();
                 $('input[name="NumFol"]').val(folioActual);
+
+                // 🆕 Sincronizar nomenclaturas de IdInd (Libro-Folio-N°)
+                $('.form-bautizo').each(function() {
+                    const idx = $(this).data('index');
+                    const nReg = $('#IdCel_' + idx).val();
+                    const lGlobal = $('#libroGeneral').val();
+                    if(lGlobal && folioActual && nReg) {
+                        $('#IdInd_' + idx).val(`${lGlobal}-${folioActual}-${nReg}`);
+                    }
+                });
+
+                validarLibroFolio(); // 🔍 Validar al cambiar manualmente
             });
 
             // Enviar formulario
             $('#btnGuardarTodo').click(async function() {
+                // 🛡️ Bloqueo final por duplicado
+                if (folioEsDuplicado) {
+                    Swal.fire('Error', 'No puede registrar datos en un folio que ya existe.', 'error');
+                    return;
+                }
+
                 const $btn = $(this);
                 if ($btn.data("sending")) return;
                 

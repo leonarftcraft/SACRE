@@ -127,6 +127,53 @@ class SacrejController
         require_once "view/layout.php";
     }
 
+    public function api_obtener_folios_faltantes()
+    {
+        header('Content-Type: application/json');
+        $libro = (int)($_POST['libro'] ?? 0);
+        if ($libro <= 0) {
+            echo json_encode(['status' => 'error', 'msg' => 'Libro no válido']);
+            exit;
+        }
+
+        $registrados = $this->model->obtener_folios_registrados($libro);
+        
+        if (empty($registrados)) {
+            echo json_encode(['status' => 'ok', 'msg' => "El libro $libro no tiene folios registrados. Puede comenzar desde el folio 1."]);
+            exit;
+        }
+
+        $maxFolio = max($registrados);
+        $faltantes = [];
+        for ($i = 1; $i < $maxFolio; $i++) {
+            if (!in_array($i, $registrados)) {
+                $faltantes[] = $i;
+            }
+        }
+
+        $msg = "En el Libro $libro: ";
+        if (!empty($faltantes)) {
+            $msg .= "Faltan los folios: " . implode(", ", $faltantes) . ". ";
+        } else {
+            $msg .= "No hay folios intermedios faltantes. ";
+        }
+        $msg .= "Y falta del folio " . ($maxFolio + 1) . " en adelante.";
+
+        echo json_encode(['status' => 'ok', 'msg' => $msg]);
+        exit;
+    }
+
+    public function api_verificar_folio_existente()
+    {
+        header('Content-Type: application/json');
+        $libro = (int)preg_replace('/\D/', '', $_POST['libro'] ?? '0');
+        $folio = (int)preg_replace('/\D/', '', $_POST['folio'] ?? '0');
+
+        $existe = ($libro > 0 && $folio > 0) ? $this->model->verificar_folio_existente($libro, $folio) : false;
+        echo json_encode(['exists' => $existe]);
+        exit;
+    }
+
     public function api_obtener_bautizos_registrados()
     {
         header('Content-Type: application/json');
@@ -799,6 +846,12 @@ class SacrejController
         require_once "view/cliente_movil.php";
     }
 
+    // 📱 NUEVA VISTA: Cliente móvil simplificado para subir imagen manual
+    public function vista_cliente_manual_upload()
+    {
+        require_once "view/cliente_manual_upload.php";
+    }
+
     public function api_registrar_cliente()
     {
         session_write_close(); // 🚀 Liberar sesión para evitar bloqueos
@@ -812,6 +865,7 @@ class SacrejController
         }
 
         $nombre = $_POST['nombre'] ?? '';
+        $clientUniqueId = $_POST['client_unique_id'] ?? ''; // Nuevo: ID único del cliente
         if (empty($nombre)) {
             echo json_encode(['success' => false, 'message' => 'El nombre es obligatorio.']);
             exit;
@@ -826,17 +880,19 @@ class SacrejController
             // Leer todo el contenido sin depender de filesize() cacheado
             $content = stream_get_contents($fp);
             $content = ($content === false || trim($content) === '') ? '{}' : $content;
-            $clientes = json_decode($content, true) ?: [];
+            $clientes = json_decode($content, true) ?: []; // Array asociativo de clientes
 
             // Migración segura
-            if (isset($clientes[0])) { $clientes = []; }
+            // Si el formato es un array numérico (viejo), resetear
+            if (isset($clientes[0]) && is_array($clientes[0])) { $clientes = []; }
             
             // 🧹 Limpieza previa: Eliminar clientes que ya expiraron antes de verificar el nombre
             $ahora = time();
             $limite = 300; // 5 minutos de tolerancia
             foreach ($clientes as $n => $d) {
                 $ls = is_array($d) ? ($d['last_seen'] ?? 0) : $d;
-                if (($ahora - $ls) > $limite) {
+                // Considerar inactivo si no hay heartbeat por un tiempo, o si no tiene client_unique_id (cliente viejo o corrupto)
+                if (($ahora - $ls) > $limite || !isset($d['client_unique_id'])) {
                     unset($clientes[$n]);
                 }
             }
@@ -853,45 +909,43 @@ class SacrejController
                 }
             }
 
-            // 🔄 LÓGICA DE RE-CONEXIÓN: Si el nombre ya existe, permitimos la entrada
-            // Esto evita que el usuario quede bloqueado al refrescar la página.
+            $response = []; // Para almacenar la respuesta final
+
+            // --- Lógica de conexión/reconexión ---
             if (isset($clientes[$nombre])) {
-                $clientes[$nombre]['last_seen'] = time();
-                $clientes[$nombre]['last_activity'] = time();
-                // 🛡️ Resetear estados operativos al reconectar para evitar estados heredados
-                $clientes[$nombre]['is_processing'] = false;
-                $clientes[$nombre]['is_verifying'] = false;
-                // Mantenemos el status y api_email previos
-                
-                ftruncate($fp, 0);
-                rewind($fp);
-                fwrite($fp, json_encode($clientes));
-                fflush($fp);
-                flock($fp, LOCK_UN);
-                fclose($fp);
-                echo json_encode(['success' => true, 'reconnected' => true]);
-                exit;
+                // El nombre ya existe. ¿Es el mismo cliente reconectándose?
+                if (isset($clientes[$nombre]['client_unique_id']) && $clientes[$nombre]['client_unique_id'] === $clientUniqueId) {
+                    // ✅ RECONEXIÓN VÁLIDA: Actualizar last_seen y last_activity
+                    $clientes[$nombre]['last_seen'] = time();
+                    $clientes[$nombre]['last_activity'] = time();
+                    // Mantener el estado de procesamiento y verificación si ya estaba activo
+                    // No cambiar el status ('pending'/'allowed') ni api_email previos en reconexión
+                    $response = ['success' => true, 'reconnected' => true];
+                } else {
+                    // 🚫 NOMBRE EN USO POR OTRO DISPOSITIVO: Bloquear
+                    $response = ['success' => false, 'message' => 'El nombre de usuario ya está en uso por otro dispositivo. Por favor, elija otro.'];
+                }
+            } else {
+                // ✅ NUEVA CONEXIÓN: El nombre no existe, intentar registrarlo.
+                // 🚫 VALIDACIÓN: Verificar disponibilidad de llaves para NUEVA conexión
+                if (!$emailAsignado) {
+                    $response = ['success' => false, 'message' => 'No hay licencias de IA disponibles. Máximo de conexiones alcanzado.'];
+                } else {
+                    // Inicializamos con todos los campos necesarios
+                    $clientes[$nombre] = [
+                        'last_seen'        => time(), 
+                        'last_activity'    => time(), 
+                        'client_unique_id' => $clientUniqueId, // Nuevo: Guardar ID único
+                        'status'           => 'pending',
+                        'is_processing'    => false,
+                        'is_verifying'     => false,
+                        'api_email'        => $emailAsignado // 📌 Guardar llave asignada
+                    ];
+                    $response = ['success' => true];
+                }
             }
 
-            // 🚫 VALIDACIÓN: Verificar disponibilidad de llaves
-            if (!$emailAsignado) {
-                flock($fp, LOCK_UN);
-                fclose($fp);
-                if (ob_get_length()) ob_clean();
-                echo json_encode(['success' => false, 'message' => 'No hay licencias de IA disponibles. Máximo de conexiones alcanzado.']);
-                exit;
-            }
-
-            // Inicializamos con todos los campos necesarios para evitar el "reset" a 180
-            $clientes[$nombre] = [
-                'last_seen'     => time(), 
-                'last_activity' => time(), 
-                'status'        => 'pending',
-                'is_processing' => false,
-                'is_verifying'  => false, // 🔍 Inicializar nuevo estado
-                'api_email'     => $emailAsignado // 📌 Guardar llave asignada
-            ];
-            
+            // Guardar el estado actualizado de los clientes
             ftruncate($fp, 0);
             rewind($fp);
             fwrite($fp, json_encode($clientes));
@@ -899,9 +953,8 @@ class SacrejController
             flock($fp, LOCK_UN);
         }
         fclose($fp);
-
         if (ob_get_length()) ob_clean();
-        echo json_encode(['success' => true]);
+        echo json_encode($response);
         exit;
     }
 
@@ -909,6 +962,7 @@ class SacrejController
     {
         session_write_close();
         $nombre = $_POST['nombre'] ?? '';
+        $clientUniqueId = $_POST['client_unique_id'] ?? ''; // Nuevo: ID único del cliente
         
         if (!empty($nombre)) {
             $archivo = 'connected_clients.json';
@@ -919,7 +973,7 @@ class SacrejController
                 $content = stream_get_contents($fp) ?: '{}';
                 $clientes = json_decode($content, true) ?: [];
 
-                if (isset($clientes[$nombre])) {
+                if (isset($clientes[$nombre]) && $clientes[$nombre]['client_unique_id'] === $clientUniqueId) {
                     unset($clientes[$nombre]);
                     ftruncate($fp, 0);
                     rewind($fp);
@@ -1035,6 +1089,7 @@ class SacrejController
         session_write_close(); // 🚀 Liberar sesión para no bloquear otros procesos
         header('Content-Type: application/json');
         $nombre = $_POST['nombre'] ?? '';
+        $clientUniqueId = $_POST['client_unique_id'] ?? ''; // Nuevo: ID único del cliente
         // 🛡️ Detección estricta: solo es true si el móvil envía literalmente la cadena "true"
         $is_processing = isset($_POST['processing']) && $_POST['processing'] === 'true';
         $is_verifying = isset($_POST['verifying']) && $_POST['verifying'] === 'true';
@@ -1057,7 +1112,7 @@ class SacrejController
                 $content = stream_get_contents($fp) ?: '{}';
                 $clientes = json_decode($content, true) ?: [];
 
-                if (isset($clientes[$nombre])) {
+                if (isset($clientes[$nombre]) && $clientes[$nombre]['client_unique_id'] === $clientUniqueId) {
                     $clientes[$nombre]['last_seen'] = time();
                     $clientes[$nombre]['is_processing'] = (bool)$is_processing; // 🛡️ Guardar como booleano real
                     $clientes[$nombre]['is_verifying'] = (bool)$is_verifying;
@@ -1123,7 +1178,8 @@ class SacrejController
                     // 🛡️ Limpiar basado en INACTIVIDAD (last_activity) y no solo en conexión
                     $last_seen = is_array($data) ? ($data['last_seen'] ?? 0) : 0;
                     $last_act  = is_array($data) ? ($data['last_activity'] ?? $last_seen) : $last_seen;
-                    if (($ahora - $last_act) >= $limite) {
+                    // También limpiar si no tiene unique_id (cliente viejo o corrupto)
+                    if (($ahora - $last_act) >= $limite || !isset($data['client_unique_id'])) {
                         unset($clientes[$nombre]);
                         $cambios = true;
                     }
@@ -1150,6 +1206,7 @@ class SacrejController
             $lista[] = [
                 'nombre' => $n, 
                 'status' => is_array($d) ? ($d['status'] ?? 'pending') : 'allowed',
+                'client_unique_id' => is_array($d) ? ($d['client_unique_id'] ?? '') : '', // 🆕 Añadir ID único
                 'inactividad' => $ahora - $last_act, // Tiempo transcurrido (aumentando)
                 'processing' => $is_proc,
                 'verifying' => $is_veri
@@ -1538,26 +1595,7 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         $libro = (int)($datos['NumLib'] ?? 0);
         $folio = (int)($datos['NumFol'] ?? 0);
 
-        if (!empty($rutaImagen) && $libro > 0 && $folio > 0) {
-            // 1. Calcular rango de folios para la subcarpeta
-            $inicio = (floor(($folio - 1) / 30) * 30) + 1;
-            $fin = $inicio + 29;
-            $targetDir = "view/images/actas/Libro_$libro/Folios_$inicio-$fin/";
-            
-            if (!file_exists($targetDir)) {
-                mkdir($targetDir, 0777, true);
-            }
-
-            $nombreArchivo = basename($rutaImagen);
-            $nuevaRuta = $targetDir . $nombreArchivo;
-
-            // 2. Mover archivo de temp a su ubicación final organizada
-            if (file_exists($rutaImagen)) {
-                rename($rutaImagen, $nuevaRuta);
-            }
-            // Actualizar la ruta en el registro para el JSON de pendientes
-            $datos['RutaImagen'] = $nuevaRuta;
-        }
+        if (!empty($rutaImagen) && $libro > 0 && $folio > 0) { $datos['RutaImagen'] = $this->_organizar_imagen_acta($rutaImagen, $libro, $folio); }
 
         $archivo = 'pending_bautizos.json';
         $pendientes = [];
@@ -1586,6 +1624,29 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         } else {
             echo json_encode([]);
         }
+        exit;
+    }
+
+    // 📸 NUEVA API: Verificar si hay una imagen manual pendiente para una sesión
+    public function api_check_manual_upload_status()
+    {
+        session_write_close();
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+
+        $session_id = $_POST['session_id'] ?? '';
+        $tempDir = 'view/images/actas/temp/manual/';
+        $infoFile = $tempDir . $session_id . '.json';
+
+        if (empty($session_id) || !file_exists($infoFile)) {
+            echo json_encode(['status' => 'pending']);
+            exit;
+        }
+
+        $info = json_decode(file_get_contents($infoFile), true);
+        // Opcional: Eliminar el archivo de info después de leerlo para evitar re-procesamiento
+        // unlink($infoFile); 
+        echo json_encode(['status' => 'ready', 'data' => $info]);
         exit;
     }
 
@@ -1663,9 +1724,9 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         exit;
     }
 
-    // 🔹 Función auxiliar para procesar un array de datos y guardarlo en BD
     private function _procesar_datos_bautizo($data) {
         
+        // Construct IdInd here before passing to model
         $individuo = [
             'NomInd'    => $data['NomInd'] ?? '',
             'ApeInd'    => $data['ApeInd'] ?? '',
@@ -1673,7 +1734,8 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
             'FecNacInd' => $data['FecNacInd'] ?? '',
             'LugNacInd' => $data['LugNacInd'] ?? '',
             'FilInd'    => $data['FilInd'] ?? '',
-            'IdUsu'     => $_SESSION['IdUsu'] ?? 1
+            'IdUsu'     => $_SESSION['IdUsu'] ?? 1,
+            'IdInd'     => "{$data['NumLib']}-{$data['NumFol']}-{$data['IdCel']}" // Constructed IdInd
         ];
 
         $madre = ['Nom' => $data['NomMad'] ?? '', 'Ape' => $data['ApeMad'] ?? '', 'Sex' => 2];
@@ -1709,7 +1771,7 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         $datosImagen = null;
         if (!empty($data['RutaImagen'])) {
             $datosImagen = [
-                'UrlArchivo' => $data['RutaImagen'],
+                'UrlArchivo' => $this->_organizar_imagen_acta($data['RutaImagen'], $data['NumLib'], $data['NumFol']),
                 'NombreDigitalizador' => $data['usuario_envio'] ?? 'Desconocido'
             ];
         }
@@ -1951,10 +2013,17 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
             $contrasena = $_POST['contrasena'] ?? '';
 
             $resultado = $this->model->verificar_usuario($usuario, $contrasena);
-
+            
             if ($resultado) {
                 // 🧹 Limpiar carpeta temporal de imágenes al iniciar sesión
                 $this->_limpiar_carpeta_temporal();
+                
+                // 🧹 Limpiar carpeta temporal de imágenes manuales
+                $manualTempDir = 'view/images/actas/temp/manual/';
+                if (is_dir($manualTempDir)) {
+                    $files = glob($manualTempDir . '*');
+                    foreach ($files as $file) { if (is_file($file)) { @unlink($file); } }
+                }
 
                 // 🔒 Resetear servidor por seguridad al loguearse
                 @file_put_contents('server_status.txt', '0');
@@ -2109,8 +2178,12 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
             ];
 
             // 🔥 Registrar
+            // 🆕 Obtener datos de imagen si vienen del formulario
+            $rutaImagen = $_POST['RutaImagen'] ?? '';
+            $nombreDigitalizador = $_POST['NombreDigitalizador'] ?? '';
             $res = $this->model->registrar_bautizo_completo(
-                $individuo, $madre, $padre, $padrinos, $celebracion, $enlace
+                $individuo, $madre, $padre, $padrinos, $celebracion, $enlace,
+                (!empty($rutaImagen) ? ['UrlArchivo' => $this->_organizar_imagen_acta($rutaImagen, $celebracion['NumLib'], $celebracion['NumFol']), 'NombreDigitalizador' => $nombreDigitalizador] : null)
             );
 
             echo json_encode($res);
