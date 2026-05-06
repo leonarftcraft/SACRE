@@ -1260,11 +1260,14 @@
             $('#forms-container').on('change', 'select[name="EstCel"]', function() {
                 const form = $(this).closest('form');
                 const estatus = $(this).val();
-                const isStandard = (estatus == '1');
-
-                form.find('[data-was-required="true"]').each(function() {
-                    $(this).prop('required', isStandard);
-                });
+                if (estatus == '1') {
+                    // Estándar (1): Todo lo marcado originalmente es obligatorio
+                    form.find('[data-was-required="true"]').prop('required', true);
+                } else {
+                    // Caso Especial (2) o Nulo (0): Solo Ministro, Nombre y Sexo son obligatorios
+                    form.find('[data-was-required="true"]').prop('required', false);
+                    form.find('[name="IdMin"], [name="NomInd"], [name="SexInd"]').prop('required', true);
+                }
             });
 
             // Actualizar libroActual cuando se edita el campo
@@ -1305,6 +1308,12 @@
 
             // Enviar formulario
             $('#btnGuardarTodo').click(async function() {
+                // 📸 Validar que la foto es obligatoria
+                if (!rutaImagenActual) {
+                    Swal.fire('Imagen Faltante', 'La carga de la foto del folio es obligatoria para respaldar el registro.', 'warning');
+                    return;
+                }
+
                 // 🛡️ Bloqueo final por duplicado
                 if (folioEsDuplicado) {
                     Swal.fire('Error', 'No puede registrar datos en un folio que ya existe.', 'error');
@@ -1317,22 +1326,28 @@
                 const forms = $('.form-bautizo');
                 if (forms.length === 0) return;
 
-                // 🔹 Validar todos los formularios usando HTML5 checkValidity
+                // 🔹 Validar formularios con mensajes específicos
                 let allFormsValid = true;
-                forms.each(function() {
+                let errorDetails = [];
+
+                forms.each(function(idx) {
                     if (!this.checkValidity()) {
-                        // Crear un botón de submit temporal para mostrar los mensajes de error del navegador
-                        let tempSubmit = document.createElement('button');
-                        $(this).append(tempSubmit);
-                        tempSubmit.click();
-                        $(this).remove(tempSubmit);
+                        let missing = [];
+                        $(this).find(':invalid').each(function() {
+                            let label = $(this).closest('div').find('label').first().text() || $(this).attr('placeholder') || $(this).attr('name');
+                            if (label) missing.push(label.trim().replace(':', ''));
+                        });
+                        errorDetails.push(`<b>Acta #${idx + 1}:</b> ${missing.join(', ')}`);
                         allFormsValid = false;
-                        return false; // Detener el bucle
                     }
                 });
 
                 if (!allFormsValid) {
-                    Swal.fire('Falta información', 'Por favor, complete todos los campos obligatorios.', 'warning');
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Campos faltantes',
+                        html: '<div class="text-start small">' + errorDetails.join('<br>') + '</div>'
+                    });
                     return;
                 }
 

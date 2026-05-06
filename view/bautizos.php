@@ -189,12 +189,6 @@
       </div>
     </div>
 
-    <!-- Botones -->
-    <div class="text-end mt-4">
-      <button type="reset" class="btn btn-secondary">Limpiar</button>
-      <button type="button" id="btnGuardarBautizo" class="btn btn-success">Guardar</button>
-    </div>
-
     <!-- 📸 Sección de Carga de Imagen Manual -->
     <div class="card mt-5 border-primary">
         <div class="card-header bg-primary text-white">
@@ -216,6 +210,7 @@
                 <p class="text-muted small">Escanee este código QR con un móvil para subir la imagen:</p>
                 <div id="qrcode" class="d-inline-block p-2 border rounded mb-3"></div>
                 <p class="text-muted small">O acceda a: <a href="#" id="manualUploadLink" target="_blank"></a></p>
+                <p class="text-info small mb-3" id="manualUploadHelp"></p>
                 <div class="spinner-border text-primary hidden" role="status" id="manualUploadSpinner">
                     <span class="visually-hidden">Esperando imagen...</span>
                 </div>
@@ -226,28 +221,39 @@
                 <h6>Imagen Recibida:</h6>
                 <img id="previewImg" src="" alt="Imagen del Folio" class="img-fluid rounded shadow-sm" style="max-height: 200px;">
                 <p class="small text-muted mt-2">Digitalizado por: <span id="previewDigitalizador"></span></p>
-                <button type="button" class="btn btn-sm btn-outline-danger" id="btnQuitarImagenManual">Quitar Imagen</button>
+                <a id="btnVerImagenManual" href="#" target="_blank" class="btn btn-sm btn-outline-success w-100 mb-2 hidden">👁️ Ver Imagen Completa</a>
+                <button type="button" class="btn btn-sm btn-outline-danger w-100" id="btnQuitarImagenManual">Quitar Imagen</button>
             </div>
 
             <input type="hidden" id="RutaImagenManual" name="RutaImagen">
             <input type="hidden" id="NombreDigitalizadorManual" name="NombreDigitalizador">
         </div>
     </div>
+
+    <!-- Botones (Movidos al final) -->
+    <div class="text-end mt-4">
+      <button type="reset" class="btn btn-secondary">Limpiar</button>
+      <button type="button" id="btnGuardarBautizo" class="btn btn-success">Guardar</button>
+    </div>
   </form>
 </div>
 
 <!-- Incluir qrcode.min.js al final del body para asegurar que el DOM esté listo -->
-<script src="view/js/qrcode.min.js"></script>
+<script src="<?php echo rtrim(dirname($_SERVER['SCRIPT_NAM
+
+E']), '/\\'); ?>/view/js/qrcode.min.js"></script>
 <script>
-  // 🐛 DEBUG: Verificar si la librería QRCode se cargó después de su inclusión.
-  // Si este error persiste:
-  // 1. Abra las herramientas de desarrollador de su navegador (F12).
-  // 2. Vaya a la pestaña "Network" (Red) y recargue la página. Busque "qrcode.min.js".
-  //    Asegúrese de que se cargue con un estado 200 OK y no con un 404 (No Encontrado) o 500 (Error del Servidor).
-  // 3. Si se carga correctamente, vaya a la pestaña "Sources" (Fuentes) o "Debugger" y abra "qrcode.min.js".
-  //    Verifique que el archivo no esté vacío o corrupto y que contenga la definición de la librería QRCode.
   if (typeof QRCode === 'undefined') {
-    console.error("ERROR: QRCode library is NOT loaded after script tag. Please verify that 'view/js/qrcode.min.js' exists, is accessible, and contains valid JavaScript.");
+    console.warn("WARNING: Local QRCode library is NOT loaded after script tag. Intentando fallback CDN...");
+    var fallbackScript = document.createElement('script');
+    fallbackScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    fallbackScript.onload = function() {
+      console.log("DEBUG: QRCode library loaded from CDN fallback.");
+    };
+    fallbackScript.onerror = function() {
+      console.error("ERROR: QRCode library failed to load from local and CDN fallback. Verifique que view/js/qrcode.min.js sea accesible.");
+    };
+    document.head.appendChild(fallbackScript);
   } else {
     console.log("DEBUG: QRCode library IS loaded after script tag.");
   }
@@ -266,17 +272,26 @@
     whenReady(() => {
       console.log("✅ jQuery detectado, activando scripts...");
 
+      // Asegurarse de que la sección de previsualización de imagen y el botón "Ver Imagen" estén ocultos al cargar la página
+      $('#imagenManualPreview').hide();
+      $('#btnVerImagenManual').hide();
+
       // --- Lógica para validación por Estatus ---
       const form = $('#formBautizo');
       const estatusSelect = $('#EstCel');
 
       estatusSelect.on('change', function() {
           const estatus = $(this).val();
-          const isStandard = (estatus == '1');
-
-          form.find('[data-was-required="true"]').each(function() {
-              $(this).prop('required', isStandard);
-          });
+          if (estatus == '1') {
+              // Estándar (1): Todo lo marcado originalmente es obligatorio
+              form.find('[data-was-required="true"]').prop('required', true);
+          } else {
+              // Caso Especial (2) o Nulo (0): Solo Ministro, Nombre y Sexo son obligatorios
+              // 1. Quitamos el requerimiento a todos los campos marcados
+              form.find('[data-was-required="true"]').prop('required', false);
+              // 2. Forzamos la obligatoriedad solo en los 3 campos solicitados
+              $('#IdMin, #NomInd, #SexInd').prop('required', true);
+          }
       }).trigger('change'); // Disparar al cargar para establecer el estado inicial
 
       // --- Fin de la lógica de Estatus ---
@@ -449,12 +464,26 @@
         if ($btn.data("sending")) return;
         $btn.data("sending", true);
 
-        // 🔹 Nueva validación HTML5
-        // El manejador de estatus ya quita/pone 'required', así que esto funciona dinámicamente.
+        // 🔹 Validación de campos obligatorios con mensaje específico
         if (!form.checkValidity()) {
-            // Forzar la visualización de los mensajes de validación del navegador
-            form.reportValidity(); 
-            notify("warning", "Campos incompletos", "Por favor, complete todos los campos obligatorios.");
+            let missingFields = [];
+            $(form).find(':invalid').each(function() {
+                let labelText = $(this).closest('div').find('label').first().text() || $(this).attr('placeholder') || $(this).attr('name');
+                if (labelText) {
+                    missingFields.push(labelText.trim().replace('*', '').replace(':', ''));
+                }
+            });
+            form.reportValidity();
+            const msg = "Faltan los siguientes campos obligatorios: " + [...new Set(missingFields)].join(", ");
+            notify("warning", "Campos incompletos", msg);
+            $btn.data("sending", false);
+            return;
+        }
+
+        // 📸 Validar que la foto sea obligatoria en cualquier estatus
+        const rutaImagen = $('#RutaImagenManual').val();
+        if (!rutaImagen) {
+            notify("warning", "Imagen Faltante", "La carga de la foto del folio es obligatoria para poder guardar el registro.");
             $btn.data("sending", false);
             return;
         }
@@ -508,8 +537,7 @@
                 ? `Bautizo registrado correctamente. ID asignado: ${res.id_ind}`
                 : res.msg || "Bautizo registrado correctamente.";
               notify("success", "Éxito", msg);
-              $("#formBautizo")[0].reset();
-              $("#IdInd").val("");
+              resetFormularioCompleto(); // 🔄 Resetear todo el formulario y sesión manual
             } else if (res.status === "error") {
               let msg = res.msg || "Error desconocido.";
               if (msg.includes("Duplicate entry"))
@@ -550,18 +578,36 @@
               return;
           }
 
+          if (manualUploadSessionId) {
+              $.post('?controller=sacrej&action=api_finalizar_sesion_manual', { session_id: manualUploadSessionId });
+          }
+
           manualUploadSessionId = generateSessionId();
+          $.post('?controller=sacrej&action=api_iniciar_sesion_manual', { session_id: manualUploadSessionId });
           
-          const uploadUrl = `${window.location.origin}${window.location.pathname}?controller=sacrej&action=vista_cliente_manual_upload&session_id=${manualUploadSessionId}`;
+          const serverIp = '<?php $serverIp = $_SERVER["SERVER_ADDR"] ?? ""; if ($serverIp === "127.0.0.1" || $serverIp === "::1") { $names = array_filter([gethostname(), php_uname('n')]); foreach ($names as $name) { $resolved = gethostbyname($name); if (filter_var($resolved, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) && !in_array($resolved, ["127.0.0.1", "::1"], true)) { $serverIp = $resolved; break; } } } echo $serverIp; ?>';
+          const hostname = window.location.hostname;
+          const isLoopbackHost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+          const useIpHost = serverIp && isLoopbackHost && serverIp !== '127.0.0.1' && serverIp !== '::1';
+          const hostForLink = useIpHost ? serverIp : hostname;
+          const uploadUrl = `${window.location.protocol}//${hostForLink}${window.location.pathname}?controller=sacrej&action=vista_cliente_manual_upload&session_id=${manualUploadSessionId}&digitalizador=${encodeURIComponent(digitalizador)}`;
           
           // 🐛 DEBUG: Log para verificar si QRCode está disponible y la URL generada
           console.log("DEBUG: QRCode library status at button click:", typeof QRCode !== 'undefined');
           console.log("DEBUG: Generated upload URL:", uploadUrl);
+          
+          if (useIpHost) {
+              $('#manualUploadHelp').text('Accesible desde el teléfono usando la IP del servidor: ' + uploadUrl);
+          } else if (isLoopbackHost) {
+              $('#manualUploadHelp').text('Para usar desde el móvil, reemplace localhost/::1 por la IP local de este PC (ej. 192.168.x.x) si está en la misma red.');
+          } else {
+              $('#manualUploadHelp').text('La URL es accesible desde la red local.');
+          }
 
           $('#manualUploadLink').attr('href', uploadUrl).text(uploadUrl);
           // 🆕 Asegurarse de que el área del QR sea visible ANTES de generarlo
-          $('#manualUploadArea').removeClass('hidden'); // Asegurarse de que el contenedor principal esté visible
-          $('#qrcode').removeClass('hidden'); // Asegurarse de que el div del QR esté visible
+          $('#manualUploadArea').removeClass('hidden').show(); 
+          $('#qrcode').removeClass('hidden').show();
           
           // 🆕 Asegurarse de que el área del QR sea visible ANTES de generarlo
           $('#manualUploadArea').removeClass('hidden');
@@ -585,6 +631,7 @@
                       text: uploadUrl,
                       width: 128,
                       height: 128,
+                      typeNumber: 0,
                       colorDark : "#000000",
                       colorLight : "#ffffff",
                       correctLevel : QRCode.CorrectLevel.H
@@ -601,10 +648,9 @@
                       console.log("DEBUG: QR Canvas dimensions (width, height):", qrCanvas.offsetWidth, qrCanvas.offsetHeight);
                       if (qrCanvas.offsetWidth === 0 || qrCanvas.offsetHeight === 0 || $(qrCanvas).is(':hidden')) {
                           console.warn("WARNING: QR code canvas is rendered but has zero dimensions. Check CSS visibility/display properties.");
-                          notify('warning', 'QR Oculto', 'El código QR se generó pero no es visible. Revise el CSS o el tamaño del contenedor.');
                       } else {
                           console.log("DEBUG: QR code canvas is visible and has dimensions.");
-                          notify('success', 'QR Generado', 'El código QR se ha generado correctamente. Si no lo ve, revise el CSS.');
+                          notify('success', 'QR Generado', 'El código QR se ha generado correctamente.');
                       }
                   } else {
                       console.warn("WARNING: QRCode library did not render a canvas element inside #qrcode.");
@@ -614,13 +660,14 @@
 
           $('#manualUploadSpinner').removeClass('hidden');
           $('#manualUploadStatus').removeClass('hidden').text('Esperando imagen...');
-          $('#imagenManualPreview').addClass('hidden');
+          $('#imagenManualPreview').addClass('hidden').hide();
+          $('#btnVerImagenManual').addClass('hidden').hide();
           $('#RutaImagenManual').val('');
           $('#NombreDigitalizadorManual').val('');
 
           // Iniciar polling
           if (manualUploadPollingInterval) clearInterval(manualUploadPollingInterval);
-          manualUploadPollingInterval = setInterval(checkManualUploadStatus, 3000); // Cada 3 segundos
+          manualUploadPollingInterval = setInterval(checkManualUploadStatus, 1000); // Cada 1 segundo
       });
 
       function checkManualUploadStatus() {
@@ -638,12 +685,14 @@
                   // Mostrar preview de la imagen
                   let visorUrl = data.ruta.includes('.dat') ? `controller/visor.php?img=${encodeURIComponent(data.ruta)}` : data.ruta;
                   $('#previewImg').attr('src', visorUrl);
+                  $('#btnVerImagenManual').attr('href', visorUrl);
+                  $('#btnVerImagenManual').removeClass('hidden').show(); // Mostrar el botón
                   $('#previewDigitalizador').text(data.digitalizador);
-                  $('#imagenManualPreview').removeClass('hidden');
+                  $('#imagenManualPreview').removeClass('hidden').show();
 
-                  $('#manualUploadArea').addClass('hidden'); // Ocultar QR y spinner
-                  $('#manualUploadSpinner').addClass('hidden');
-                  $('#manualUploadStatus').addClass('hidden');
+                  $('#manualUploadArea').addClass('hidden').hide(); 
+                  $('#manualUploadSpinner').addClass('hidden').hide();
+                  $('#manualUploadStatus').addClass('hidden').text('').hide(); 
 
                   notify('success', 'Imagen Recibida', 'La imagen del folio ha sido cargada exitosamente.');
               }
@@ -655,24 +704,79 @@
 
       $('#btnQuitarImagenManual').click(function() {
           const ruta = $('#RutaImagenManual').val();
-          if (ruta) {
-              $.post('?controller=sacrej&action=api_borrar_imagen_cancelada', { ruta: ruta }, function(res) {
+          
+          if (manualUploadSessionId) {
+              $.post('?controller=sacrej&action=api_resetear_subida_manual', { 
+                  session_id: manualUploadSessionId,
+                  ruta: ruta 
+              }, function(res) {
                   if (res.status === 'ok') {
-                      notify('info', 'Imagen Eliminada', 'La imagen temporal ha sido eliminada.');
-                  } else {
-                      notify('error', 'Error', res.msg);
+                      // Limpiar valores y previsualización
+                      $('#RutaImagenManual').val('');
+                      $('#NombreDigitalizadorManual').val('');
+                      $('#imagenManualPreview').addClass('hidden').hide();
+                      $('#previewImg').attr('src', '');
+                      $('#btnVerImagenManual').addClass('hidden').hide(); // Ocultar el botón
+                      $('#btnVerImagenManual').attr('href', '#');
+                      $('#previewDigitalizador').text('');
+
+                      // Restaurar UI de espera para recibir la nueva imagen
+                      $('#manualUploadArea').removeClass('hidden').show();
+                      $('#manualUploadSpinner').removeClass('hidden').show();
+                      $('#manualUploadStatus').removeClass('hidden').text('Esperando nueva imagen...').show();
+                      
+                      // Asegurar que el polling siga corriendo
+                      if (!manualUploadPollingInterval) {
+                          manualUploadPollingInterval = setInterval(checkManualUploadStatus, 1000);
+                      }
                   }
               }, 'json');
           }
-          $('#RutaImagenManual').val('');
-          $('#NombreDigitalizadorManual').val('');
-          $('#imagenManualPreview').addClass('hidden');
-          $('#previewImg').attr('src', '');
-          $('#previewDigitalizador').text('');
-          manualUploadSessionId = null; // Resetear sesión
+      });
+
+      // 🔄 Función para resetear completamente el formulario y la sesión de carga manual
+      function resetFormularioCompleto() {
+          // 1. Resetear campos del formulario principal
+          $("#formBautizo")[0].reset();
+          $("#IdInd").val("");
+          $('#digitalizadorNombreManual').val('');
+
+          // 2. Finalizar sesión manual en el servidor si existe
+          if (manualUploadSessionId) {
+              $.post('?controller=sacrej&action=api_finalizar_sesion_manual', { session_id: manualUploadSessionId });
+              manualUploadSessionId = null;
+          }
+
+          // 3. Detener el sondeo (polling) y ocultar UI de carga
           if (manualUploadPollingInterval) {
               clearInterval(manualUploadPollingInterval);
               manualUploadPollingInterval = null;
+          }
+          $('#manualUploadArea').addClass('hidden').hide();
+          $('#qrcode').empty();
+          $('#manualUploadSpinner').addClass('hidden').hide();
+          $('#manualUploadStatus').addClass('hidden').text('').hide();
+          $('#manualUploadLink').attr('href', '#').text('');
+          $('#manualUploadHelp').text('');
+
+          // 4. Limpiar datos de imagen y previsualización
+          $('#RutaImagenManual').val('');
+          $('#NombreDigitalizadorManual').val('');
+          $('#imagenManualPreview').addClass('hidden').hide();
+          $('#previewImg').attr('src', '');
+          $('#btnVerImagenManual').addClass('hidden').hide().attr('href', '#');
+          $('#previewDigitalizador').text('');
+      }
+
+      // Alias para compatibilidad si se llama desde otros procesos
+      window.fullManualImageCleanup = resetFormularioCompleto;
+
+      // 🛡️ Finalizar sesión en el servidor si se sale de la vista o se recarga
+      $(window).on('beforeunload', function() {
+          if (manualUploadSessionId) {
+              const data = new URLSearchParams();
+              data.append('session_id', manualUploadSessionId);
+              navigator.sendBeacon('?controller=sacrej&action=api_finalizar_sesion_manual', data);
           }
       });
 

@@ -849,6 +849,18 @@ class SacrejController
     // 📱 NUEVA VISTA: Cliente móvil simplificado para subir imagen manual
     public function vista_cliente_manual_upload()
     {
+        $session_id = $_GET['session_id'] ?? '';
+        $archivo = 'active_manual_sessions.json';
+        $valido = false;
+        if ($session_id && file_exists($archivo)) {
+            $sesiones = json_decode(file_get_contents($archivo), true) ?: [];
+            if (isset($sesiones[$session_id])) { $valido = true; }
+        }
+
+        if (!$valido) {
+            echo "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><link href='view/css/bootstrap.min.css' rel='stylesheet'></head><body class='d-flex align-items-center justify-content-center' style='height:100vh; background:#f0f2f5;'><div class='text-center p-4 bg-white rounded shadow-sm' style='max-width:400px;'><h3>Acceso No Autorizado</h3><p class='text-muted'>La sesión de carga no está activa o ha expirado en el servidor. Escanee el código QR desde el formulario de registro.</p></div></body></html>";
+            exit;
+        }
         require_once "view/cliente_manual_upload.php";
     }
 
@@ -1594,9 +1606,7 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         $rutaImagen = $datos['RutaImagen'] ?? '';
         $libro = (int)($datos['NumLib'] ?? 0);
         $folio = (int)($datos['NumFol'] ?? 0);
-
         if (!empty($rutaImagen) && $libro > 0 && $folio > 0) { $datos['RutaImagen'] = $this->_organizar_imagen_acta($rutaImagen, $libro, $folio); }
-
         $archivo = 'pending_bautizos.json';
         $pendientes = [];
         
@@ -1615,6 +1625,88 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         exit;
     }
 
+    public function api_iniciar_sesion_manual()
+    {
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+        $session_id = $_POST['session_id'] ?? '';
+        if (!$session_id) { echo json_encode(['status' => 'error']); exit; }
+
+        $archivo = 'active_manual_sessions.json';
+        $sesiones = file_exists($archivo) ? json_decode(file_get_contents($archivo), true) : [];
+        // Limpiar sesiones de más de 2 horas
+        foreach ($sesiones as $id => $time) { if (time() - $time > 7200) unset($sesiones[$id]); }
+        
+        $sesiones[$session_id] = time();
+        file_put_contents($archivo, json_encode($sesiones));
+        echo json_encode(['status' => 'ok']);
+        exit;
+    }
+
+    public function api_finalizar_sesion_manual()
+    {
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+        $session_id = $_POST['session_id'] ?? '';
+        if (!$session_id) { echo json_encode(['status' => 'error']); exit; }
+
+        $archivo = 'active_manual_sessions.json';
+        if (file_exists($archivo)) {
+            $sesiones = json_decode(file_get_contents($archivo), true) ?: [];
+            if (isset($sesiones[$session_id])) {
+                unset($sesiones[$session_id]);
+                file_put_contents($archivo, json_encode($sesiones));
+            }
+        }
+        echo json_encode(['status' => 'ok']);
+        exit;
+    }
+
+    // 📸 NUEVA API: Resetear estado de subida manual sin cerrar la sesión
+    public function api_resetear_subida_manual()
+    {
+        session_write_close();
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+
+        $session_id = $_POST['session_id'] ?? '';
+        $ruta = $_POST['ruta'] ?? '';
+
+        if (empty($session_id)) {
+            echo json_encode(['status' => 'error', 'msg' => 'Session ID faltante.']);
+            exit;
+        }
+
+        // 1. Borrar el archivo de información JSON para que el polling del admin vuelva a 'pending'
+        $tempDir = __DIR__ . '/../view/images/actas/temp/manual/';
+        $infoFile = $tempDir . $session_id . '.json';
+        if (file_exists($infoFile)) { @unlink($infoFile); }
+
+        // 2. Borrar el archivo físico de la imagen si se proporcionó la ruta
+        if (!empty($ruta)) {
+            $realPath = realpath(__DIR__ . '/../' . $ruta);
+            if ($realPath && file_exists($realPath)) { @unlink($realPath); }
+        }
+
+        echo json_encode(['status' => 'ok', 'msg' => 'Estado reseteado. El móvil puede subir otra imagen.']);
+        exit;
+    }
+
+    public function api_verificar_sesion_manual()
+    {
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+        $session_id = $_GET['session_id'] ?? '';
+        $archivo = 'active_manual_sessions.json';
+        $active = false;
+        if ($session_id && file_exists($archivo)) {
+            $sesiones = json_decode(file_get_contents($archivo), true) ?: [];
+            if (isset($sesiones[$session_id])) { $active = true; }
+        }
+        echo json_encode(['active' => $active]);
+        exit;
+    }
+
     public function api_obtener_bautizos_temporales()
     {
         header('Content-Type: application/json');
@@ -1627,6 +1719,60 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         exit;
     }
 
+    // 📸 NUEVA API: Subir imagen manual desde móvil
+    public function api_upload_manual_image()
+    {
+        session_write_close();
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+
+        $session_id = $_POST['session_id'] ?? '';
+        $digitalizador_nombre = $_POST['digitalizador_nombre'] ?? '';
+
+        if (empty($session_id)) {
+            echo json_encode(['status' => 'error', 'msg' => 'Session ID faltante.']);
+            exit;
+        }
+
+        if (!isset($_FILES['imagen']) || $_FILES['imagen']['error'] !== UPLOAD_ERR_OK) {
+            echo json_encode(['status' => 'error', 'msg' => 'Error en la subida de imagen.']);
+            exit;
+        }
+
+        $relDir = 'view/images/actas/temp/manual/';
+        $tempDir = __DIR__ . '/../' . $relDir;
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
+        // 🛡️ Lógica de almacenamiento consistente: .dat con protección XOR
+        $fileName = $session_id . '_' . time() . '.dat';
+        $filePath = $tempDir . $fileName;
+
+        $data = file_get_contents($_FILES['imagen']['tmp_name']);
+        $xorKey = defined('SACRE_XOR_KEY') ? SACRE_XOR_KEY : 0x00;
+        $len = strlen($data);
+        if ($len > 0) {
+            for ($i = 0; $i < 10 && $i < $len; $i++) {
+                $data[$i] = chr(ord($data[$i]) ^ $xorKey);
+            }
+        }
+
+        if (file_put_contents($filePath, $data)) {
+            $info = [
+                'ruta' => $relDir . $fileName,
+                'digitalizador' => $digitalizador_nombre,
+                'timestamp' => time()
+            ];
+            $infoFile = $tempDir . $session_id . '.json';
+            file_put_contents($infoFile, json_encode($info));
+            echo json_encode(['status' => 'ok', 'msg' => 'Imagen subida correctamente.']);
+        } else {
+            echo json_encode(['status' => 'error', 'msg' => 'Error al guardar la imagen.']);
+        }
+        exit;
+    }
+
     // 📸 NUEVA API: Verificar si hay una imagen manual pendiente para una sesión
     public function api_check_manual_upload_status()
     {
@@ -1635,7 +1781,7 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         header('Content-Type: application/json; charset=utf-8');
 
         $session_id = $_POST['session_id'] ?? '';
-        $tempDir = 'view/images/actas/temp/manual/';
+        $tempDir = __DIR__ . '/../view/images/actas/temp/manual/';
         $infoFile = $tempDir . $session_id . '.json';
 
         if (empty($session_id) || !file_exists($infoFile)) {
@@ -1726,6 +1872,16 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
 
     private function _procesar_datos_bautizo($data) {
         
+        // 🛡️ Validar Imagen antes de proceder
+        if (empty($data['RutaImagen'])) {
+            return ['status' => 'error', 'msg' => 'Error: El registro del acta N° ' . ($data['IdCel'] ?? '') . ' no contiene una imagen asociada. La foto es obligatoria.'];
+        }
+
+        // 🛡️ Validar Ministro antes de proceder para evitar error de FK
+        if (empty($data['IdMin']) || !is_numeric($data['IdMin']) || (int)$data['IdMin'] <= 0) {
+            return ['status' => 'error', 'msg' => 'Error: No se ha seleccionado un Ministro válido para el acta N° ' . ($data['IdCel'] ?? 'desconocida') . '. Por favor, verifique el campo Ministro.'];
+        }
+
         // Construct IdInd here before passing to model
         $individuo = [
             'NomInd'    => $data['NomInd'] ?? '',
@@ -1799,7 +1955,11 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         }
 
         try {
-            $res = $this->_procesar_datos_bautizo($pendientes[$index]);
+            $p = $pendientes[$index];
+            
+            // La imagen ya debe estar organizada desde api_enviar_bautizos_temporal
+
+            $res = $this->_procesar_datos_bautizo($p);
             if ($res['status'] === 'ok') {
                 // Eliminar del JSON si se guardó en BD
                 array_splice($pendientes, $index, 1);
@@ -1826,12 +1986,14 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         $pendientes = json_decode(file_get_contents($archivo), true) ?? [];
         $guardados = 0;
         $errores = 0;
+        $nuevaRuta = ''; // Cache para la ruta organizada en este grupo
         $nuevosPendientes = [];
 
         foreach ($pendientes as $p) {
             // Si coincide la ruta de imagen, intentamos guardarlo en BD
             if (isset($p['RutaImagen']) && $p['RutaImagen'] === $ruta) {
-                try {
+                try { // La imagen ya debe estar organizada desde api_enviar_bautizos_temporal
+
                     $res = $this->_procesar_datos_bautizo($p);
                     if ($res['status'] === 'ok') {
                         $guardados++;
@@ -1865,7 +2027,7 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
 
         // 🛡️ Seguridad: Solo permitir borrar si está dentro de la carpeta de actas
         $realPath = realpath($ruta);
-        $baseDir = realpath('view/images/actas/');
+        $baseDir = realpath(__DIR__ . '/../view/images/actas/');
 
         if ($realPath && strpos($realPath, $baseDir) === 0 && file_exists($realPath)) {
             if (unlink($realPath)) {
@@ -1886,10 +2048,14 @@ de esta lista usa el nombre de la lista en lugar del que estragiste: (' . $minis
         $pendientes = file_exists($archivo) ? json_decode(file_get_contents($archivo), true) : [];
         $guardados = 0;
         $errores = 0;
+        $mapaRutas = []; // Cache para no intentar mover el mismo archivo varias veces
         $nuevosPendientes = [];
 
         foreach ($pendientes as $p) {
             try {
+                $rutaOriginal = $p['RutaImagen'] ?? '';
+                // La imagen ya debe estar organizada desde api_enviar_bautizos_temporal
+
                 $res = $this->_procesar_datos_bautizo($p);
                 if ($res['status'] === 'ok') {
                     $guardados++;
@@ -3189,5 +3355,55 @@ public function generar_constancia_no_asentamiento()
 
 
 
+    /**
+     * Organiza la imagen de un acta desde una ruta temporal a su ubicación final.
+     * Aplica máscara XOR a los primeros bytes y cambia extensión a .dat.
+     */
+    private function _organizar_imagen_acta($tempPath, $libro, $folio)
+    {
+        if (empty($tempPath)) return '';
+
+        // Construir la ruta completa del archivo temporal
+        $realTempPath = __DIR__ . "/../" . $tempPath;
+
+        // Estructura de la carpeta de destino
+        // Estructura: view/images/actas/Libro_X/Folio_Y/
+        $targetFolder = "view/images/actas/Libro_$libro/Folio_$folio/";
+        $fullTargetFolder = __DIR__ . "/../" . $targetFolder;
+
+        // Asegurarse de que la carpeta de destino exista
+        if (!is_dir($fullTargetFolder)) {
+            mkdir($fullTargetFolder, 0777, true);
+        }
+
+        // Extraer el nombre de archivo del tempPath para usarlo en la ruta final
+        $originalFileName = basename($tempPath);
+        // Asegurarse de que la extensión sea .dat para consistencia
+        if (pathinfo($originalFileName, PATHINFO_EXTENSION) !== 'dat') {
+            $originalFileName = pathinfo($originalFileName, PATHINFO_FILENAME) . '.dat';
+        }
+        
+        $finalRelPath = $targetFolder . $originalFileName;
+        $finalFullPath = $fullTargetFolder . $originalFileName;
+
+        // 1. Si el archivo ya está en la ubicación final, simplemente devolver esa ruta.
+        if (file_exists($finalFullPath)) {
+            return $finalRelPath;
+        }
+
+        // 2. Si el archivo temporal existe, moverlo.
+        if (file_exists($realTempPath)) {
+            if (rename($realTempPath, $finalFullPath)) { // Usar rename para mover el archivo
+                return $finalRelPath;
+            } else {
+                error_log("Error: No se pudo mover la imagen de $realTempPath a $finalFullPath");
+                return $tempPath; // Retornar ruta temporal original en caso de error de movimiento
+            }
+        }
+        
+        // 3. Si el archivo temporal NO existe y tampoco el final, algo salió mal.
+        error_log("Advertencia: Archivo de imagen no encontrado en $realTempPath ni en la ruta final esperada $finalFullPath.");
+        return $tempPath; // Retornar ruta temporal original como último recurso.
+    }
 }
 ?>    

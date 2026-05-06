@@ -787,8 +787,14 @@ function guardarEdicionPendiente() {
 
     // 🔹 Validación HTML5
     if (!form.checkValidity()) {
+        let missing = [];
+        $(form).find(':invalid').each(function() {
+            let label = $(this).closest('div').find('label').first().text();
+            if(!label) label = $(this).attr('placeholder') || $(this).attr('name');
+            missing.push(label.trim().replace(':', ''));
+        });
         form.reportValidity();
-        Swal.fire("Campos incompletos", "Por favor, complete todos los campos obligatorios.", "warning");
+        Swal.fire("Campos incompletos", "Faltan los siguientes campos obligatorios: " + [...new Set(missing)].join(", "), "warning");
         return;
     }
 

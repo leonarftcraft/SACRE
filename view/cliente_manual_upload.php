@@ -14,29 +14,20 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
-<body>
-
+<body class="p-3">
     <div class="mobile-card">
         <img src="view/images/logo.png" alt="Logo" style="height: 80px; margin-bottom: 20px;">
         <h4 class="mb-3">Cargar Imagen de Folio</h4>
         <p class="text-muted mb-4">Envía una foto del folio al formulario de registro manual.</p>
         
-        <div class="mb-3">
+        <div class="mb-3" id="digitalizadorField">
             <label for="digitalizadorNombre" class="form-label">Tu Nombre:</label>
             <input type="text" id="digitalizadorNombre" class="form-control form-control-lg text-center" placeholder="Nombre del Digitalizador">
         </div>
 
-        <script>
-            // Restaurar nombre del digitalizador si existe en sessionStorage
-            $(document).ready(function() {
-                const savedName = sessionStorage.getItem('digitalizador_manual_name');
-                if (savedName) $('#digitalizadorNombre').val(savedName);
-            });
-        </script>
-
         <input type="file" id="imageInput" accept="image/*" capture="environment" style="display: none;" onchange="handleImageSelection(this)">
 
-        <button class="btn btn-primary btn-big" onclick="document.getElementById('imageInput').click()">
+        <button id="btnUpload" class="btn btn-primary btn-big" onclick="document.getElementById('imageInput').click()">
             📸 Seleccionar/Tomar Foto
         </button>
 
@@ -53,27 +44,49 @@
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const sessionId = urlParams.get('session_id');
+        const digitalizadorFromUrl = urlParams.get('digitalizador');
 
-        if (!sessionId) {
-            Swal.fire('Error', 'ID de sesión no encontrado. Por favor, acceda desde el QR o enlace del formulario principal.', 'error');
+        if (digitalizadorFromUrl) {
+            $('#digitalizadorField').hide();
         }
+
+        // 🛡️ Verificar periódicamente si la sesión sigue permitida por el servidor
+        function verificarEstadoSesion() {
+            if (!sessionId) return;
+            $.getJSON('?controller=sacrej&action=api_verificar_sesion_manual', { session_id: sessionId }, function(res) {
+                if (!res.active) {
+                    $('body').html('<div class="d-flex align-items-center justify-content-center" style="height:100vh; background:#f0f2f5;"><div class="mobile-card"><h3>Sesión Finalizada</h3><p class="text-muted">La ventana de recepción se ha cerrado o ha expirado. Por favor, solicite un nuevo código QR.</p></div></div>');
+                    return;
+                }
+
+                // 🆕 Sincronizar estado del botón: si ya hay una imagen en el servidor, deshabilitar
+                $.post('?controller=sacrej&action=api_check_manual_upload_status', { session_id: sessionId }, function(statusRes) {
+                    if (statusRes.status === 'ready') {
+                        $('#btnUpload').prop('disabled', true).html('✅ Imagen Enviada').removeClass('btn-primary').addClass('btn-success');
+                        $('#statusMessage').removeClass('hidden').html('<p class="text-success">Imagen enviada correctamente. El administrador la está revisando.</p>');
+                    } else {
+                        $('#btnUpload').prop('disabled', false).html('📸 Seleccionar/Tomar Foto').removeClass('btn-success').addClass('btn-primary');
+                        if ($('#statusMessage .text-success').length) $('#statusMessage').addClass('hidden').empty();
+                    }
+                }, 'json');
+            });
+        }
+        setInterval(verificarEstadoSesion, 3000);
 
         function handleImageSelection(input) {
             const file = input.files[0];
             if (!file) return;
 
-            const digitalizadorNombre = $('#digitalizadorNombre').val().trim();
+            let digitalizadorNombre = digitalizadorFromUrl || $('#digitalizadorNombre').val().trim();
             if (!digitalizadorNombre) {
-                Swal.fire('Error', 'Por favor, ingresa tu nombre.', 'warning');
-                sessionStorage.removeItem('digitalizador_manual_name'); // Limpiar si no se ingresa
-                input.value = ''; // Limpiar input para permitir re-selección
+                Swal.fire('Atención', 'Por favor, ingresa tu nombre.', 'warning');
+                input.value = '';
                 return;
             }
 
             $('#loader').removeClass('hidden');
             $('#statusMessage').addClass('hidden').empty();
 
-            sessionStorage.setItem('digitalizador_manual_name', digitalizadorNombre); // Guardar nombre
             const formData = new FormData();
             formData.append('imagen', file);
             formData.append('digitalizador_nombre', digitalizadorNombre);
@@ -88,17 +101,20 @@
                 dataType: 'json',
                 success: function(res) {
                     $('#loader').addClass('hidden');
-                    Swal.fire(res.status === 'ok' ? 'Éxito' : 'Error', res.msg, res.status);
                     if (res.status === 'ok') {
-                        $('#statusMessage').removeClass('hidden').html('<p class="text-success">Imagen enviada. Puede cerrar esta ventana.</p>');
+                        Swal.fire('Éxito', 'Imagen enviada correctamente.', 'success');
+                        $('#statusMessage').removeClass('hidden').html('<p class="text-success">Imagen enviada. Puede cerrar esta ventana o esperar si necesita subir otra.</p>');
+                        $('#btnUpload').prop('disabled', true).html('✅ Imagen Enviada').removeClass('btn-primary').addClass('btn-success');
+                        input.value = '';
+                    } else {
+                        Swal.fire('Error', res.msg, 'error');
                     }
                 },
                 error: function() {
                     $('#loader').addClass('hidden');
-                    Swal.fire('Error', 'Error al subir la imagen.', 'error');
+                    Swal.fire('Error', 'Error al conectar con el servidor.', 'error');
                 }
             });
-            input.value = ''; // Limpiar input para permitir tomar la misma foto de nuevo
         }
     </script>
 </body>
